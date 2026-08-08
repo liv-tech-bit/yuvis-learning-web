@@ -70,7 +70,7 @@ h2 { color: var(--secondary); font-size: 24px; }
 @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-50px); } }
 
 /* ==========================================
-   ENDLESS RUNNER GAME UI
+   ENDLESS RUNNER GAME UI (8-BIT PIXEL ART)
    ========================================== */
 .pixel-font { font-family: 'Press Start 2P', monospace !important; }
 
@@ -79,18 +79,33 @@ h2 { color: var(--secondary); font-size: 24px; }
 .score-block { display: flex; flex-direction: column; }
 .score-text { font-size: 14px; font-weight: 900; }
 .hi-score-text { font-size: 10px; color: gray; font-weight: bold; margin-top: 4px; }
-
-/* FIXED: Target Block prevents squishing and handles long words! */
-.target-block { 
-    background: white; border: 4px solid black; padding: 8px 12px; 
-    display: flex; align-items: center; gap: 8px; box-shadow: 4px 4px 0 black; 
-    white-space: nowrap; min-height: 50px; 
-}
+.target-block { background: white; border: 4px solid black; padding: 8px 12px; display: flex; align-items: center; gap: 8px; box-shadow: 4px 4px 0 black; white-space: nowrap; min-height: 50px; }
 .target-text { font-size: 14px; font-weight: 900; color: #D32F2F; text-transform: uppercase; }
-
 .lives-block { display: flex; align-items: center; gap: 16px; font-size: 24px;}
 .pause-btn { background: white; border: 4px solid black; width: 44px; height: 44px; font-size: 20px; cursor: pointer; box-shadow: 4px 4px 0 black; }
-.feedback-text { text-align: center; font-size: 16px; font-weight: 900; min-height: 24px; line-height: 1.5; margin-bottom: 12px; }
+
+/* THE NEW BULLETPROOF ANIMATION SYSTEM */
+.feedback-text { 
+    text-align: center; 
+    font-size: 20px; 
+    font-weight: 900; 
+    min-height: 28px; 
+    line-height: 1.5; 
+    margin-bottom: 12px; 
+    opacity: 0; /* Hidden by default */
+}
+
+/* The exact CSS animation that makes the text explode onto the screen! */
+.pop-anim {
+    animation: superPop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes superPop {
+    0% { transform: scale(0.5); opacity: 0; }
+    15% { transform: scale(1.6); opacity: 1; text-shadow: 2px 2px 0px white, -2px -2px 0px white, 2px -2px 0px white, -2px 2px 0px white; }
+    80% { transform: scale(1.6); opacity: 1; text-shadow: 2px 2px 0px white, -2px -2px 0px white, 2px -2px 0px white, -2px 2px 0px white; }
+    100% { transform: scale(1); opacity: 0; }
+}
 
 .game-canvas-wrapper { 
     position: relative; width: 100%; flex: 1; max-height: 55vh; aspect-ratio: 1 / 1; 
