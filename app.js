@@ -465,14 +465,20 @@ let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50},
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 let feedbackTimeout;
 
-// Bulletproof feedback animation system!
+// Dynamic Text Pop Animation!
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
     
+    // Force CSS reflow to restart animation
     uiFeedback.classList.remove('pop-anim');
     void uiFeedback.offsetWidth; 
     uiFeedback.classList.add('pop-anim');
+
+    clearTimeout(feedbackTimeout);
+    feedbackTimeout = setTimeout(() => {
+        if (gameState === 'PLAYING') uiFeedback.innerText = "";
+    }, 800);
 }
 
 function initGame() {
@@ -546,28 +552,33 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
+        // NEW RANDOM SCALING (Small, Medium, Big)
         let scaleChoice = Math.random();
         let s = 1.0;
         if (scaleChoice < 0.33) s = 0.7;
         else if (scaleChoice < 0.66) s = 1.0;
-        else s = 1.4;
+        else s = 1.3;
+        obs.scale = s;
 
+        // Apply scale to dimensions
         if (chosenHazard === 'MOUNTAIN') {
-            obs.scale = s; obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
+            obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'CACTUS') {
-            obs.scale = s; obs.w = 60 * s; obs.h = 80 * s; obs.y = 650;
+            obs.w = 60 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'TREE') {
-            obs.scale = s; obs.w = 70 * s; obs.h = 100 * s; obs.y = 650;
+            obs.w = 70 * s; obs.h = 100 * s; obs.y = 650;
+        } else if (chosenHazard === 'ELEPHANT') {
+            obs.w = 100 * s; obs.h = 60 * s; obs.y = 650;
         } else if (chosenHazard === 'BIRD') {
-            obs.scale = s; obs.w = 60 * s; obs.h = 40 * s; obs.y = 500; obs.isSine = true; 
+            obs.w = 60 * s; obs.h = 40 * s; obs.y = 500; obs.isSine = true; 
+        } else if (chosenHazard === 'UFO') {
+            obs.w = 80 * s; obs.h = 40 * s; obs.y = 400; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
+            // Lava is not scaled, ensuring it remains thick and long!
             obs.scale = 1; obs.w = 140; obs.h = 40; obs.y = 650; 
         } else if (chosenHazard === 'PUDDLE') {
+            // Puddle is not scaled, ensuring it remains thick!
             obs.scale = 1; obs.w = 140; obs.h = 30; obs.y = 650; 
-        } else if (chosenHazard === 'ELEPHANT') {
-            obs.scale = 1; obs.w = 100; obs.h = 60; obs.y = 650;
-        } else if (chosenHazard === 'UFO') {
-            obs.scale = 1; obs.w = 80; obs.h = 40; obs.y = 400; obs.isHoming = true; 
         }
     }
     obstacles.push(obs);
@@ -610,6 +621,7 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
+        // Perfect Hitbox
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
         
@@ -619,7 +631,7 @@ function gameLoop(timestamp) {
                 score += 10;
                 uiScore.innerText = `SCORE: ${score}`;
                 
-                // FIXED: RANDOM CATCH WORDS ARE PROPERLY HOOKED UP!
+                // RANDOM CATCH TEXTS
                 let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
                 let randomCatch = catchTexts[Math.floor(Math.random() * catchTexts.length)];
                 showFeedback(randomCatch, "#2E7D32");
@@ -656,10 +668,11 @@ function gameLoop(timestamp) {
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
                 
-                // FIXED: RANDOM DODGE WORDS ARE PROPERLY HOOKED UP!
-                let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "CUT! +2", "NICE! +2", "SICK! +2"];
+                // RANDOM DODGE TEXTS
+                let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
                 let randomDodge = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
                 showFeedback(randomDodge, "#1565C0");
+                
             } else {
                 showFeedback("MISSED IT!", "black");
             }
@@ -773,7 +786,6 @@ function drawGame() {
     
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
-    gCtx.scale(-1, 1); 
     let sc = 4; 
     
     if (char.isSliding) {
