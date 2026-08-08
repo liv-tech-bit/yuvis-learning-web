@@ -399,6 +399,7 @@ document.querySelectorAll('.nav-item').forEach(button => {
                 initGame();
             } else if (gameState === 'PAUSED' && score > 0) {
                 document.getElementById('game-overlay').style.display = 'flex';
+                audioManager.playBGM('bg_music.mp3', 0.25);
             }
         } else {
             audioManager.stopAll();
@@ -435,7 +436,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Ultimate Hitboxes & Audio Wipe)
+// 8. ENDLESS RUNNER GAME
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -464,12 +465,20 @@ let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50},
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 let feedbackTimeout;
 
-document.getElementById('game-hi-score').innerText = `HI: ${gameHighScore}`;
-
-// NEW FEEDBACK SYSTEM: Flashes text and quickly clears it
+// DYNAMIC FEEDBACK SYSTEM (POPS THE TEXT EVERY TIME)
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
+    
+    // Force CSS reflow to restart animation "Pop"
+    uiFeedback.style.transition = 'none';
+    uiFeedback.style.transform = 'scale(1.4)';
+    
+    setTimeout(() => {
+        uiFeedback.style.transition = 'transform 0.2s ease-out';
+        uiFeedback.style.transform = 'scale(1)';
+    }, 50);
+
     clearTimeout(feedbackTimeout);
     feedbackTimeout = setTimeout(() => {
         if (gameState === 'PLAYING') uiFeedback.innerText = "";
@@ -547,13 +556,13 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
-        // FIXED LAVA & PUDDLE HITBOX HEIGHTS!
+        // NEW FIX: THICKER LAVA & PUDDLE SO THEY CAN BE HIT!
         if (chosenHazard === 'MOUNTAIN') {
             obs.w = 80; obs.h = 80; obs.y = 650;
         } else if (chosenHazard === 'LAVA') {
-            obs.w = 140; obs.h = 25; obs.y = 650; // Increased height to ensure collision
+            obs.w = 140; obs.h = 40; obs.y = 650; // Increased height to 40
         } else if (chosenHazard === 'PUDDLE') {
-            obs.w = 140; obs.h = 20; obs.y = 650; // Increased height to ensure collision
+            obs.w = 140; obs.h = 30; obs.y = 650; // Increased height to 30
         } else if (chosenHazard === 'CACTUS') {
             obs.w = 60; obs.h = 80; obs.y = 650;
         } else if (chosenHazard === 'TREE') {
@@ -606,9 +615,9 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
-        // Hitbox collision (Shrunk horizontally, but exact vertically)
+        // NEW FIX: Adjusted vertical padding so Lava and Puddles actually trigger damage!
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
-        let hitY = char.y > obs.y - obs.h + 10 && char.y - char.h + 15 < obs.y;
+        let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
         
         if (hitX && hitY) {
             obs.active = false; 
@@ -627,7 +636,7 @@ function gameLoop(timestamp) {
                 
                 if (lives <= 0) {
                     gameState = 'GAMEOVER';
-                    audioManager.stopAll(); 
+                    audioManager.stopAll(); // Silence all audio immediately!
                     audioManager.playSFX('gameover.mp3', 1.0);
                     if (score > gameHighScore) {
                         gameHighScore = score;
@@ -643,12 +652,14 @@ function gameLoop(timestamp) {
             }
         }
 
-        // Accurate Dodging logic feedback
+        // DYNAMIC DODGING MESSAGES!
         if (obs.active && !obs.passed && obs.x + obs.w < char.x) {
             obs.passed = true;
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
-                showFeedback("DODGED! +2", "#1565C0");
+                let dodgeTexts = ["DODGED! +2", "WOOSH! +2", "NICE! +2", "QUICK! +2"];
+                let randomText = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
+                showFeedback(randomText, "#1565C0");
             } else {
                 showFeedback("MISSED IT!", "black");
             }
@@ -714,16 +725,16 @@ function drawGame() {
             gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 20, obs.y - obs.h + 30); gCtx.lineTo(obs.x + obs.w - 20, obs.y - obs.h + 30); gCtx.fill();
             
         } else if (obs.type === 'LAVA') {
-            gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - 25, obs.w, 25); 
-            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - 25, obs.w, 10);
+            gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h); 
+            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 15);
             gCtx.fillStyle = '#FFEB3B'; let offset = Math.floor(Date.now() / 200) % 20;
-            gCtx.fillRect(obs.x + 20 + offset, obs.y - 20, 10, 8);
-            gCtx.fillRect(obs.x + 60 - offset, obs.y - 15, 12, 6);
-            gCtx.fillRect(obs.x + 100 + offset/2, obs.y - 20, 8, 8);
+            gCtx.fillRect(obs.x + 20 + offset, obs.y - obs.h - 5, 10, 5);
+            gCtx.fillRect(obs.x + 60 - offset, obs.y - obs.h - 5, 10, 5);
+            gCtx.fillRect(obs.x + 100 + offset/2, obs.y - obs.h - 5, 10, 5);
             
         } else if (obs.type === 'PUDDLE') {
-            gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - 20, obs.w, 20);
-            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - 15, obs.w - 20, 5);
+            gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h);
+            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - obs.h + 5, obs.w - 20, 10);
 
         } else if (obs.type === 'CACTUS') {
             gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 20, obs.y - 80, 20, 80);
@@ -761,6 +772,7 @@ function drawGame() {
     
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
+    gCtx.scale(-1, 1); 
     let sc = 4; 
     
     if (char.isSliding) {
@@ -818,7 +830,6 @@ window.addEventListener('keyup', (e) => {
 });
 
 startBtn.addEventListener('click', () => {
-    // The Ultimate Audio Fix: Kill everything before starting
     audioManager.stopAll();
     audioManager.playBGM('bg_music.mp3', 0.25);
     
