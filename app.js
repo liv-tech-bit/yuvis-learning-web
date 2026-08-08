@@ -12,7 +12,7 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER
+// 2. AUDIO MANAGER 
 // ==========================================
 const audioManager = {
     bgm: null,
@@ -399,6 +399,7 @@ document.querySelectorAll('.nav-item').forEach(button => {
                 initGame();
             } else if (gameState === 'PAUSED' && score > 0) {
                 document.getElementById('game-overlay').style.display = 'flex';
+                audioManager.playBGM('bg_music.mp3', 0.25);
             }
         } else {
             audioManager.stopAll();
@@ -435,7 +436,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Ultimate Hitboxes & Scaled Hazards)
+// 8. ENDLESS RUNNER GAME
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -462,15 +463,13 @@ let lastHazardType = '';
 
 let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50}, {x: 800, y: 80, w: 120, h: 45} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
+let feedbackTimeout;
 
-document.getElementById('game-hi-score').innerText = `HI: ${gameHighScore}`;
-
-// THE NEW BULLETPROOF ANIMATION SYSTEM!
+// Bulletproof feedback animation system!
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
     
-    // This absolutely forces the browser to restart the CSS animation
     uiFeedback.classList.remove('pop-anim');
     void uiFeedback.offsetWidth; 
     uiFeedback.classList.add('pop-anim');
@@ -547,7 +546,6 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
-        // DYNAMIC SIZES! Small (0.7), Medium (1.0), or Big (1.4)
         let scaleChoice = Math.random();
         let s = 1.0;
         if (scaleChoice < 0.33) s = 0.7;
@@ -563,10 +561,8 @@ function spawnObstacle() {
         } else if (chosenHazard === 'BIRD') {
             obs.scale = s; obs.w = 60 * s; obs.h = 40 * s; obs.y = 500; obs.isSine = true; 
         } else if (chosenHazard === 'LAVA') {
-            // Unscaled, but thick!
             obs.scale = 1; obs.w = 140; obs.h = 40; obs.y = 650; 
         } else if (chosenHazard === 'PUDDLE') {
-            // Unscaled, but thick!
             obs.scale = 1; obs.w = 140; obs.h = 30; obs.y = 650; 
         } else if (chosenHazard === 'ELEPHANT') {
             obs.scale = 1; obs.w = 100; obs.h = 60; obs.y = 650;
@@ -614,7 +610,6 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
-        // PERFECT COLLISION! The box padding is slightly forgiving but guarantees Lava/Puddle hits.
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
         
@@ -624,7 +619,7 @@ function gameLoop(timestamp) {
                 score += 10;
                 uiScore.innerText = `SCORE: ${score}`;
                 
-                // RANDOM CATCH TEXT!
+                // FIXED: RANDOM CATCH WORDS ARE PROPERLY HOOKED UP!
                 let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
                 let randomCatch = catchTexts[Math.floor(Math.random() * catchTexts.length)];
                 showFeedback(randomCatch, "#2E7D32");
@@ -661,8 +656,8 @@ function gameLoop(timestamp) {
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
                 
-                // RANDOM DODGE TEXT!
-                let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
+                // FIXED: RANDOM DODGE WORDS ARE PROPERLY HOOKED UP!
+                let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "CUT! +2", "NICE! +2", "SICK! +2"];
                 let randomDodge = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
                 showFeedback(randomDodge, "#1565C0");
             } else {
