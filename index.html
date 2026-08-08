@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yuvi's Learning App</title>
+    <!-- Import Retro Pixel Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="main-content">
+        <!-- TAB 1: DICTIONARY -->
+        <div id="tab-words" class="tab-view active-tab">
+            <div class="header">
+                <div>
+                    <h2 id="level-title">Level 1 🌟</h2>
+                    <p id="progress-text" class="subtitle">0 / 264 words done</p>
+                    <button id="reset-btn" class="text-btn">Reset Progress 🔄</button>
+                </div>
+                <button id="level-up-btn" class="primary-btn">Locked 🔒</button>
+            </div>
+            <div class="search-bar">
+                <span>🔍</span>
+                <input type="text" id="search-input" placeholder="Search words...">
+            </div>
+            <div id="dictionary-list" class="scroll-list"></div>
+        </div>
+
+        <!-- TAB 2: DAILY CALENDAR -->
+        <div id="tab-daily" class="tab-view hidden">
+            <div class="calendar-header" style="text-align: center; margin-bottom: 20px;">
+                <h2>My Learning Log 🗺️</h2>
+                <p class="subtitle">Parents: Track progress below!</p>
+            </div>
+            <div id="calendar-container" class="calendar-grid"></div>
+            <div class="mission-control" style="text-align: center; margin-top: 24px;">
+                <h3 id="mission-title" style="color: #2EC4B6; margin-bottom: 12px; font-size: 24px;">Week 1, Day 1 🚀</h3>
+                <button id="start-mission-btn" class="primary-btn huge-btn">Start Mission! ⭐</button>
+            </div>
+        </div>
+
+        <!-- TAB 3: GAMES (RETRO PIXEL RUNNER) -->
+        <div id="tab-games" class="tab-view hidden" style="padding: 0;">
+            <div id="game-ui" class="game-container">
+                <div class="game-header">
+                    <div class="score-block">
+                        <div id="game-score" class="score-text pixel-font">SCORE: 0</div>
+                        <div id="game-hi-score" class="hi-score-text pixel-font">HI: 0</div>
+                    </div>
+                    <div class="target-block">
+                        <span class="pixel-font" style="font-size: 10px; color: black;">FIND: </span>
+                        <span id="game-target-word" class="target-text pixel-font">WORD</span>
+                    </div>
+                    <div class="lives-block">
+                        <span id="game-lives">❤️❤️❤️</span>
+                        <button id="game-pause-btn" class="pause-btn">⏸️</button>
+                    </div>
+                </div>
+
+                <div id="game-feedback" class="feedback-text pixel-font">READY? RUN!</div>
+                
+                <div class="game-canvas-wrapper">
+                    <!-- SQUARE CANVAS -->
+                    <canvas id="game-canvas" width="800" height="800"></canvas>
+                    
+                    <div id="game-overlay" class="game-overlay">
+                        <h2 id="game-overlay-title" class="pixel-font" style="font-size: 28px;">HEDGEHOG RUN!</h2>
+                        <p id="game-overlay-score" class="pixel-font" style="display:none; font-size: 18px; margin-bottom: 20px; color: white;">SCORE: 0</p>
+                        <button id="game-start-btn" class="pixel-btn pixel-font" style="background-color: #4CAF50; width: 220px; font-size: 20px;">PLAY</button>
+                    </div>
+                </div>
+                
+                <div class="game-controls">
+                    <button id="btn-slide" class="pixel-btn pixel-font" style="background-color: #03A9F4; font-size: 24px;">SLIDE</button>
+                    <button id="btn-jump" class="pixel-btn pixel-font" style="background-color: #FF5722; font-size: 24px;">JUMP</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🎨 TRACING SCREEN OVERLAY -->
+    <div id="tracing-screen" class="hidden fullscreen-overlay tracing-bg">
+        <div class="tracing-header">
+            <button id="close-tracing-btn" class="icon-btn">⬅️</button>
+            <span id="tracing-step-label" class="subtitle" style="font-weight: bold; font-size: 18px;">Step 1 of 5</span>
+            <button id="done-tracing-btn" class="primary-btn done-btn" disabled>Next</button>
+        </div>
+        <h2 id="tracing-title" class="tracing-title">🌟 WORD</h2>
+        <div class="tracing-tools">
+            <div id="color-palette" class="color-palette"></div>
+            <button id="brush-toggle" class="brush-btn">🖊️</button>
+        </div>
+        <button id="clear-board-btn" class="clear-btn">Clear Board 🧹</button>
+        <div class="canvas-container">
+            <div class="canvas-background-text">
+                <span class="lang-label">Hindi</span>
+                <span id="trace-hindi" class="trace-text"></span>
+                <span class="lang-label" style="margin-top: 20px;">Hinglish</span>
+                <span id="trace-hinglish" class="trace-text"></span>
+            </div>
+            <canvas id="tracing-canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- 🧩 MATCHING SCREEN OVERLAY -->
+    <div id="matching-screen" class="hidden fullscreen-overlay">
+        <h2 class="tracing-title" style="color: #FF9F1C;">Match Them! 🧩</h2>
+        <p id="matching-progress" class="subtitle" style="margin-bottom: 24px;">Part 1 of 1</p>
+        <div class="matching-container">
+            <div id="match-left" class="match-column"></div>
+            <div id="match-right" class="match-column"></div>
+        </div>
+    </div>
+
+    <!-- ✨ DYNAMIC REWARD SCREEN OVERLAY -->
+    <div id="reward-screen" class="hidden fullscreen-overlay">
+        <div class="sparkles">✨🎊✨</div>
+        <div id="reward-emoji" class="bouncing-emoji">🐶</div>
+        <h2 class="reward-title">Great Job!</h2>
+        <button id="reward-continue-btn" class="secondary-btn huge-btn">Keep Going! 🐾</button>
+    </div>
+
+    <!-- BOTTOM NAVIGATION BAR -->
+    <nav id="bottom-nav">
+        <button class="nav-item active" data-target="tab-words">
+            <span class="icon">📖</span><span class="label">Words</span>
+        </button>
+        <button class="nav-item" data-target="tab-daily">
+            <span class="icon">🦁</span><span class="label">Daily</span>
+        </button>
+        <button class="nav-item" data-target="tab-games">
+            <span class="icon">🎮</span><span class="label">Games</span>
+        </button>
+    </nav>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
