@@ -12,7 +12,7 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER (Total Wipe Fixed)
+// 2. AUDIO MANAGER
 // ==========================================
 const audioManager = {
     bgm: null,
@@ -399,7 +399,6 @@ document.querySelectorAll('.nav-item').forEach(button => {
                 initGame();
             } else if (gameState === 'PAUSED' && score > 0) {
                 document.getElementById('game-overlay').style.display = 'flex';
-                audioManager.playBGM('bg_music.mp3', 0.25);
             }
         } else {
             audioManager.stopAll();
@@ -436,7 +435,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME
+// 8. ENDLESS RUNNER GAME (Ultimate Hitboxes & Scaled Hazards)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -463,26 +462,18 @@ let lastHazardType = '';
 
 let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50}, {x: 800, y: 80, w: 120, h: 45} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
-let feedbackTimeout;
 
-// DYNAMIC FEEDBACK SYSTEM (POPS THE TEXT EVERY TIME)
+document.getElementById('game-hi-score').innerText = `HI: ${gameHighScore}`;
+
+// THE NEW BULLETPROOF ANIMATION SYSTEM!
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
     
-    // Force CSS reflow to restart animation "Pop"
-    uiFeedback.style.transition = 'none';
-    uiFeedback.style.transform = 'scale(1.4)';
-    
-    setTimeout(() => {
-        uiFeedback.style.transition = 'transform 0.2s ease-out';
-        uiFeedback.style.transform = 'scale(1)';
-    }, 50);
-
-    clearTimeout(feedbackTimeout);
-    feedbackTimeout = setTimeout(() => {
-        if (gameState === 'PLAYING') uiFeedback.innerText = "";
-    }, 800);
+    // This absolutely forces the browser to restart the CSS animation
+    uiFeedback.classList.remove('pop-anim');
+    void uiFeedback.offsetWidth; 
+    uiFeedback.classList.add('pop-anim');
 }
 
 function initGame() {
@@ -524,7 +515,7 @@ function resetGame() {
 }
 
 function spawnObstacle() {
-    let obs = { active: true, passed: false, isHoming: false, isSine: false };
+    let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0 };
     
     let minGap = Math.max(250, 650 - (score * 3)); 
     let startX = 800;
@@ -556,23 +547,31 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
-        // NEW FIX: THICKER LAVA & PUDDLE SO THEY CAN BE HIT!
+        // DYNAMIC SIZES! Small (0.7), Medium (1.0), or Big (1.4)
+        let scaleChoice = Math.random();
+        let s = 1.0;
+        if (scaleChoice < 0.33) s = 0.7;
+        else if (scaleChoice < 0.66) s = 1.0;
+        else s = 1.4;
+
         if (chosenHazard === 'MOUNTAIN') {
-            obs.w = 80; obs.h = 80; obs.y = 650;
-        } else if (chosenHazard === 'LAVA') {
-            obs.w = 140; obs.h = 40; obs.y = 650; // Increased height to 40
-        } else if (chosenHazard === 'PUDDLE') {
-            obs.w = 140; obs.h = 30; obs.y = 650; // Increased height to 30
+            obs.scale = s; obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'CACTUS') {
-            obs.w = 60; obs.h = 80; obs.y = 650;
+            obs.scale = s; obs.w = 60 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'TREE') {
-            obs.w = 70; obs.h = 100; obs.y = 650;
-        } else if (chosenHazard === 'ELEPHANT') {
-            obs.w = 100; obs.h = 60; obs.y = 650;
+            obs.scale = s; obs.w = 70 * s; obs.h = 100 * s; obs.y = 650;
         } else if (chosenHazard === 'BIRD') {
-            obs.w = 60; obs.h = 40; obs.y = 500; obs.isSine = true; 
+            obs.scale = s; obs.w = 60 * s; obs.h = 40 * s; obs.y = 500; obs.isSine = true; 
+        } else if (chosenHazard === 'LAVA') {
+            // Unscaled, but thick!
+            obs.scale = 1; obs.w = 140; obs.h = 40; obs.y = 650; 
+        } else if (chosenHazard === 'PUDDLE') {
+            // Unscaled, but thick!
+            obs.scale = 1; obs.w = 140; obs.h = 30; obs.y = 650; 
+        } else if (chosenHazard === 'ELEPHANT') {
+            obs.scale = 1; obs.w = 100; obs.h = 60; obs.y = 650;
         } else if (chosenHazard === 'UFO') {
-            obs.w = 80; obs.h = 40; obs.y = 400; obs.isHoming = true; 
+            obs.scale = 1; obs.w = 80; obs.h = 40; obs.y = 400; obs.isHoming = true; 
         }
     }
     obstacles.push(obs);
@@ -615,7 +614,7 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
-        // NEW FIX: Adjusted vertical padding so Lava and Puddles actually trigger damage!
+        // PERFECT COLLISION! The box padding is slightly forgiving but guarantees Lava/Puddle hits.
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
         
@@ -624,7 +623,12 @@ function gameLoop(timestamp) {
             if (obs.type === 'TARGET') {
                 score += 10;
                 uiScore.innerText = `SCORE: ${score}`;
-                showFeedback("AWESOME! +10", "#2E7D32");
+                
+                // RANDOM CATCH TEXT!
+                let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
+                let randomCatch = catchTexts[Math.floor(Math.random() * catchTexts.length)];
+                showFeedback(randomCatch, "#2E7D32");
+                
                 audioManager.playSFX('pickup.wav');
                 targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                 uiTarget.innerText = targetWord.english;
@@ -636,7 +640,7 @@ function gameLoop(timestamp) {
                 
                 if (lives <= 0) {
                     gameState = 'GAMEOVER';
-                    audioManager.stopAll(); // Silence all audio immediately!
+                    audioManager.stopAll(); 
                     audioManager.playSFX('gameover.mp3', 1.0);
                     if (score > gameHighScore) {
                         gameHighScore = score;
@@ -652,14 +656,15 @@ function gameLoop(timestamp) {
             }
         }
 
-        // DYNAMIC DODGING MESSAGES!
         if (obs.active && !obs.passed && obs.x + obs.w < char.x) {
             obs.passed = true;
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
-                let dodgeTexts = ["DODGED! +2", "WOOSH! +2", "NICE! +2", "QUICK! +2"];
-                let randomText = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
-                showFeedback(randomText, "#1565C0");
+                
+                // RANDOM DODGE TEXT!
+                let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
+                let randomDodge = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
+                showFeedback(randomDodge, "#1565C0");
             } else {
                 showFeedback("MISSED IT!", "black");
             }
@@ -707,6 +712,7 @@ function drawGame() {
     
     obstacles.forEach(obs => {
         if (!obs.active) return;
+        let s = obs.scale || 1.0;
         
         if (obs.type === 'TARGET' || obs.type === 'DANGER') {
             gCtx.fillStyle = '#FFF3E0';
@@ -722,7 +728,7 @@ function drawGame() {
             gCtx.fillStyle = '#78909C'; gCtx.beginPath();
             gCtx.moveTo(obs.x, obs.y); gCtx.lineTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + obs.w, obs.y); gCtx.fill();
             gCtx.fillStyle = '#CFD8DC'; gCtx.beginPath();
-            gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 20, obs.y - obs.h + 30); gCtx.lineTo(obs.x + obs.w - 20, obs.y - obs.h + 30); gCtx.fill();
+            gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 20*s, obs.y - obs.h + 30*s); gCtx.lineTo(obs.x + obs.w - 20*s, obs.y - obs.h + 30*s); gCtx.fill();
             
         } else if (obs.type === 'LAVA') {
             gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h); 
@@ -737,35 +743,35 @@ function drawGame() {
             gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - obs.h + 5, obs.w - 20, 10);
 
         } else if (obs.type === 'CACTUS') {
-            gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 20, obs.y - 80, 20, 80);
-            gCtx.fillRect(obs.x, obs.y - 50, 20, 15); gCtx.fillRect(obs.x, obs.y - 65, 15, 15);
-            gCtx.fillRect(obs.x + 40, obs.y - 40, 20, 15); gCtx.fillRect(obs.x + 45, obs.y - 55, 15, 15);
+            gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 20*s, obs.y - 80*s, 20*s, 80*s);
+            gCtx.fillRect(obs.x, obs.y - 50*s, 20*s, 15*s); gCtx.fillRect(obs.x, obs.y - 65*s, 15*s, 15*s);
+            gCtx.fillRect(obs.x + 40*s, obs.y - 40*s, 20*s, 15*s); gCtx.fillRect(obs.x + 45*s, obs.y - 55*s, 15*s, 15*s);
             
         } else if (obs.type === 'TREE') {
-            gCtx.fillStyle = '#5D4037'; gCtx.fillRect(obs.x + 25, obs.y - 40, 20, 40);
-            gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(obs.x, obs.y - 90, 70, 50);
-            gCtx.fillRect(obs.x + 10, obs.y - 100, 50, 20);
+            gCtx.fillStyle = '#5D4037'; gCtx.fillRect(obs.x + 25*s, obs.y - 40*s, 20*s, 40*s);
+            gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(obs.x, obs.y - 90*s, 70*s, 50*s);
+            gCtx.fillRect(obs.x + 10*s, obs.y - 100*s, 50*s, 20*s);
 
         } else if (obs.type === 'ELEPHANT') {
-            gCtx.fillStyle = '#9E9E9E'; gCtx.fillRect(obs.x + 20, obs.y - 60, 80, 60); 
-            gCtx.fillRect(obs.x, obs.y - 40, 20, 30); gCtx.fillRect(obs.x - 10, obs.y - 20, 10, 20); 
-            gCtx.fillRect(obs.x + 30, obs.y - 20, 10, 20); gCtx.fillRect(obs.x + 70, obs.y - 20, 10, 20); 
-            gCtx.fillStyle = 'black'; gCtx.fillRect(obs.x + 5, obs.y - 35, 5, 5); 
+            gCtx.fillStyle = '#9E9E9E'; gCtx.fillRect(obs.x + 20*s, obs.y - 60*s, 80*s, 60*s); 
+            gCtx.fillRect(obs.x, obs.y - 40*s, 20*s, 30*s); gCtx.fillRect(obs.x - 10*s, obs.y - 20*s, 10*s, 20*s); 
+            gCtx.fillRect(obs.x + 30*s, obs.y - 20*s, 10*s, 20*s); gCtx.fillRect(obs.x + 70*s, obs.y - 20*s, 10*s, 20*s); 
+            gCtx.fillStyle = 'black'; gCtx.fillRect(obs.x + 5*s, obs.y - 35*s, 5*s, 5*s); 
             
         } else if (obs.type === 'BIRD') {
-            gCtx.fillStyle = '#000000'; gCtx.fillRect(obs.x + 15, obs.y - 20, 30, 10);
+            gCtx.fillStyle = '#000000'; gCtx.fillRect(obs.x + 15*s, obs.y - 20*s, 30*s, 10*s);
             gCtx.fillStyle = '#E53935'; 
-            if (Math.floor(Date.now() / 150) % 2 === 0) gCtx.fillRect(obs.x + 20, obs.y - 35, 20, 15); 
-            else gCtx.fillRect(obs.x + 20, obs.y - 10, 20, 15); 
-            gCtx.fillStyle = '#FDD835'; gCtx.fillRect(obs.x + 5, obs.y - 18, 10, 6);
+            if (Math.floor(Date.now() / 150) % 2 === 0) gCtx.fillRect(obs.x + 20*s, obs.y - 35*s, 20*s, 15*s); 
+            else gCtx.fillRect(obs.x + 20*s, obs.y - 10*s, 20*s, 15*s); 
+            gCtx.fillStyle = '#FDD835'; gCtx.fillRect(obs.x + 5*s, obs.y - 18*s, 10*s, 6*s);
             
         } else if (obs.type === 'UFO') {
-            gCtx.fillStyle = '#455A64'; gCtx.fillRect(obs.x, obs.y - 20, 80, 20);
-            gCtx.fillStyle = '#80CBC4'; gCtx.fillRect(obs.x + 20, obs.y - 40, 40, 20);
-            gCtx.fillStyle = '#00E676'; gCtx.fillRect(obs.x + 35, obs.y - 30, 10, 10);
+            gCtx.fillStyle = '#455A64'; gCtx.fillRect(obs.x, obs.y - 20*s, 80*s, 20*s);
+            gCtx.fillStyle = '#80CBC4'; gCtx.fillRect(obs.x + 20*s, obs.y - 40*s, 40*s, 20*s);
+            gCtx.fillStyle = '#00E676'; gCtx.fillRect(obs.x + 35*s, obs.y - 30*s, 10*s, 10*s);
             gCtx.fillStyle = '#FF5252'; 
             if(Math.floor(Date.now() / 100) % 2 === 0) { 
-                gCtx.fillRect(obs.x + 10, obs.y, 10, 10); gCtx.fillRect(obs.x + 60, obs.y, 10, 10);
+                gCtx.fillRect(obs.x + 10*s, obs.y, 10*s, 10*s); gCtx.fillRect(obs.x + 60*s, obs.y, 10*s, 10*s);
             }
         }
     });
