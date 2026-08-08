@@ -436,7 +436,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME
+// 8. ENDLESS RUNNER GAME (Ultimate Polish)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -465,12 +465,10 @@ let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50},
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 let feedbackTimeout;
 
-// Dynamic Text Pop Animation!
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
     
-    // Force CSS reflow to restart animation
     uiFeedback.classList.remove('pop-anim');
     void uiFeedback.offsetWidth; 
     uiFeedback.classList.add('pop-anim');
@@ -552,15 +550,15 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
-        // NEW RANDOM SCALING (Small, Medium, Big)
+        // DYNAMIC SIZES! Small (0.7), Medium (1.0), or Big (1.4)
         let scaleChoice = Math.random();
         let s = 1.0;
         if (scaleChoice < 0.33) s = 0.7;
         else if (scaleChoice < 0.66) s = 1.0;
-        else s = 1.3;
+        else s = 1.4;
         obs.scale = s;
 
-        // Apply scale to dimensions
+        // Note: Lava and Puddle ignore 's' scaling so they stay wide to jump over
         if (chosenHazard === 'MOUNTAIN') {
             obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'CACTUS') {
@@ -574,10 +572,8 @@ function spawnObstacle() {
         } else if (chosenHazard === 'UFO') {
             obs.w = 80 * s; obs.h = 40 * s; obs.y = 400; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            // Lava is not scaled, ensuring it remains thick and long!
             obs.scale = 1; obs.w = 140; obs.h = 40; obs.y = 650; 
         } else if (chosenHazard === 'PUDDLE') {
-            // Puddle is not scaled, ensuring it remains thick!
             obs.scale = 1; obs.w = 140; obs.h = 30; obs.y = 650; 
         }
     }
@@ -621,7 +617,6 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
-        // Perfect Hitbox
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
         
@@ -631,35 +626,29 @@ function gameLoop(timestamp) {
                 score += 10;
                 uiScore.innerText = `SCORE: ${score}`;
                 
-                // RANDOM CATCH TEXTS
                 let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
-                let randomCatch = catchTexts[Math.floor(Math.random() * catchTexts.length)];
-                showFeedback(randomCatch, "#2E7D32");
+                showFeedback(catchTexts[Math.floor(Math.random() * catchTexts.length)], "#2E7D32");
                 
                 audioManager.playSFX('pickup.wav');
                 targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                 uiTarget.innerText = targetWord.english;
+                
+            } else if (obs.type === 'DANGER') {
+                // EXPLICIT WRONG WORD FEEDBACK
+                lives--;
+                uiLives.innerText = "❤️".repeat(Math.max(0, lives));
+                showFeedback("WRONG WORD! -1 ❤️", "#D32F2F");
+                audioManager.playSFX('wrong.wav'); // Different sound for wrong word
+                
+                if (lives <= 0) triggerGameOver();
+                
             } else {
                 lives--;
                 uiLives.innerText = "❤️".repeat(Math.max(0, lives));
                 showFeedback("OUCH! -1 LIFE", "#D32F2F");
                 audioManager.playSFX('explosion.wav');
                 
-                if (lives <= 0) {
-                    gameState = 'GAMEOVER';
-                    audioManager.stopAll(); 
-                    audioManager.playSFX('gameover.mp3', 1.0);
-                    if (score > gameHighScore) {
-                        gameHighScore = score;
-                        localStorage.setItem('gameHighScore', gameHighScore);
-                        uiHiScore.innerText = `HI: ${gameHighScore}`;
-                    }
-                    overlay.style.display = 'flex';
-                    document.getElementById('game-overlay-title').innerText = "GAME OVER";
-                    document.getElementById('game-overlay-score').innerText = `SCORE: ${score}`;
-                    document.getElementById('game-overlay-score').style.display = 'block';
-                    startBtn.innerText = "RETRY";
-                }
+                if (lives <= 0) triggerGameOver();
             }
         }
 
@@ -667,12 +656,8 @@ function gameLoop(timestamp) {
             obs.passed = true;
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
-                
-                // RANDOM DODGE TEXTS
                 let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
-                let randomDodge = dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)];
-                showFeedback(randomDodge, "#1565C0");
-                
+                showFeedback(dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)], "#1565C0");
             } else {
                 showFeedback("MISSED IT!", "black");
             }
@@ -687,6 +672,22 @@ function gameLoop(timestamp) {
     
     drawGame();
     if (gameState === 'PLAYING') { gameRAF = requestAnimationFrame(gameLoop); }
+}
+
+function triggerGameOver() {
+    gameState = 'GAMEOVER';
+    audioManager.stopAll(); 
+    audioManager.playSFX('gameover.mp3', 1.0);
+    if (score > gameHighScore) {
+        gameHighScore = score;
+        localStorage.setItem('gameHighScore', gameHighScore);
+        uiHiScore.innerText = `HI: ${gameHighScore}`;
+    }
+    overlay.style.display = 'flex';
+    document.getElementById('game-overlay-title').innerText = "GAME OVER";
+    document.getElementById('game-overlay-score').innerText = `SCORE: ${score}`;
+    document.getElementById('game-overlay-score').style.display = 'block';
+    startBtn.innerText = "RETRY";
 }
 
 function drawGame() {
@@ -784,6 +785,7 @@ function drawGame() {
         }
     });
     
+    // UN-FLIPPED HEDGEHOG (Natively Facing Right/Forward!)
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
     let sc = 4; 
