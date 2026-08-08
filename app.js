@@ -12,7 +12,7 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER 
+// 2. AUDIO MANAGER (Total Wipe Fixed)
 // ==========================================
 const audioManager = {
     bgm: null,
@@ -69,7 +69,7 @@ document.addEventListener("visibilitychange", () => {
     } else {
         const activeTab = document.querySelector('.nav-item.active').getAttribute('data-target');
         if (activeTab === 'tab-games' && gameState === 'PLAYING') {
-            audioManager.playBGM('bg_music.mp3');
+            audioManager.playBGM('bg_music.mp3', 0.25);
         }
     }
 });
@@ -435,27 +435,10 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (THE CHAOS ENGINE)
+// 8. ENDLESS RUNNER GAME (Ultimate Hitboxes & Audio Wipe)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
-
-let gameRAF;
-let gameState = 'START'; 
-let score = 0; let lives = 3; let lastTime = 0; 
-let gameSpeed = 200; 
-
-let char = { x: 120, y: 650, w: 50, h: 60, vy: 0, gravity: 2200, jumpForce: -1100, isJumping: false, isSliding: false };
-
-// NOW WE USE AN ARRAY OF OBSTACLES FOR ULTIMATE CHAOS!
-let obstacles = [];
-let gameWords = []; let targetWord = null; let groundScrollX = 0;
-
-let lastLane = 650; 
-let lastHazardType = ''; 
-
-let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50}, {x: 800, y: 80, w: 120, h: 45} ];
-let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 
 const uiScore = document.getElementById('game-score');
 const uiHiScore = document.getElementById('game-hi-score');
@@ -465,7 +448,33 @@ const uiFeedback = document.getElementById('game-feedback');
 const overlay = document.getElementById('game-overlay');
 const startBtn = document.getElementById('game-start-btn');
 
+let gameRAF;
+let gameState = 'START'; 
+let score = 0; let lives = 3; let lastTime = 0; 
+let gameSpeed = 200; 
+
+let char = { x: 120, y: 650, w: 50, h: 60, vy: 0, gravity: 2200, jumpForce: -1100, isJumping: false, isSliding: false };
+let obstacles = [];
+let gameWords = []; let targetWord = null; let groundScrollX = 0;
+
+let lastLane = 650; 
+let lastHazardType = ''; 
+
+let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50}, {x: 800, y: 80, w: 120, h: 45} ];
+let trees = [ {x: 150}, {x: 500}, {x: 900} ];
+let feedbackTimeout;
+
 document.getElementById('game-hi-score').innerText = `HI: ${gameHighScore}`;
+
+// NEW FEEDBACK SYSTEM: Flashes text and quickly clears it
+function showFeedback(text, color) {
+    uiFeedback.innerText = text;
+    uiFeedback.style.color = color;
+    clearTimeout(feedbackTimeout);
+    feedbackTimeout = setTimeout(() => {
+        if (gameState === 'PLAYING') uiFeedback.innerText = "";
+    }, 800);
+}
 
 function initGame() {
     let safeGameDay = (absoluteDay - 1) === 0 ? 1 : absoluteDay - 1;
@@ -490,14 +499,13 @@ function resetGame() {
     score = 0; lives = 3; gameSpeed = 200; 
     char.y = 650; char.vy = 0; char.isJumping = false; char.isSliding = false;
     
-    obstacles = []; // Clear all previous traps!
+    obstacles = []; 
     lastHazardType = ''; 
     spawnObstacle();
     
     uiScore.innerText = `SCORE: ${score}`;
     uiLives.innerText = "❤️❤️❤️";
-    uiFeedback.innerText = "READY? RUN!";
-    uiFeedback.style.color = "black";
+    showFeedback("READY? RUN!", "black");
     
     overlay.style.display = 'none';
     gameState = 'PLAYING';
@@ -509,8 +517,7 @@ function resetGame() {
 function spawnObstacle() {
     let obs = { active: true, passed: false, isHoming: false, isSine: false };
     
-    // Calculates where to put the new trap based on the previous one
-    let minGap = Math.max(250, 650 - (score * 3)); // GAP SHRINKS RAPIDLY AS SCORE RISES!
+    let minGap = Math.max(250, 650 - (score * 3)); 
     let startX = 800;
     if (obstacles.length > 0) {
         startX = Math.max(800, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 150));
@@ -534,19 +541,19 @@ function spawnObstacle() {
         lastLane = obs.y;
         
     } else {
-        // NEW VARIETY OF HAZARDS
         let hazardList = ['MOUNTAIN', 'LAVA', 'BIRD', 'UFO', 'PUDDLE', 'ELEPHANT', 'CACTUS', 'TREE'];
         let availableHazards = hazardList.filter(h => h !== lastHazardType);
         let chosenHazard = availableHazards[Math.floor(Math.random() * availableHazards.length)];
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
+        // FIXED LAVA & PUDDLE HITBOX HEIGHTS!
         if (chosenHazard === 'MOUNTAIN') {
             obs.w = 80; obs.h = 80; obs.y = 650;
         } else if (chosenHazard === 'LAVA') {
-            obs.w = 120; obs.h = 15; obs.y = 650;
+            obs.w = 140; obs.h = 25; obs.y = 650; // Increased height to ensure collision
         } else if (chosenHazard === 'PUDDLE') {
-            obs.w = 100; obs.h = 10; obs.y = 650;
+            obs.w = 140; obs.h = 20; obs.y = 650; // Increased height to ensure collision
         } else if (chosenHazard === 'CACTUS') {
             obs.w = 60; obs.h = 80; obs.y = 650;
         } else if (chosenHazard === 'TREE') {
@@ -585,7 +592,6 @@ function gameLoop(timestamp) {
     }
     char.h = char.isSliding ? 30 : 60;
     
-    // UPDATE AND COLLIDE ALL OBSTACLES!
     obstacles.forEach(obs => {
         if (!obs.active) return;
         obs.x -= gameSpeed * dt;
@@ -600,24 +606,23 @@ function gameLoop(timestamp) {
             obs.y = 520 + Math.sin(Date.now() / 200) * 100;
         }
 
+        // Hitbox collision (Shrunk horizontally, but exact vertically)
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
-        let hitY = char.y > obs.y - obs.h + 15 && char.y - char.h + 15 < obs.y;
+        let hitY = char.y > obs.y - obs.h + 10 && char.y - char.h + 15 < obs.y;
         
         if (hitX && hitY) {
             obs.active = false; 
             if (obs.type === 'TARGET') {
                 score += 10;
                 uiScore.innerText = `SCORE: ${score}`;
-                uiFeedback.innerText = "AWESOME! +10";
-                uiFeedback.style.color = "#2E7D32";
+                showFeedback("AWESOME! +10", "#2E7D32");
                 audioManager.playSFX('pickup.wav');
                 targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                 uiTarget.innerText = targetWord.english;
             } else {
                 lives--;
                 uiLives.innerText = "❤️".repeat(Math.max(0, lives));
-                uiFeedback.innerText = "OUCH! -1 LIFE";
-                uiFeedback.style.color = "#D32F2F";
+                showFeedback("OUCH! -1 LIFE", "#D32F2F");
                 audioManager.playSFX('explosion.wav');
                 
                 if (lives <= 0) {
@@ -638,19 +643,18 @@ function gameLoop(timestamp) {
             }
         }
 
-        // Dodging logic
+        // Accurate Dodging logic feedback
         if (obs.active && !obs.passed && obs.x + obs.w < char.x) {
             obs.passed = true;
             if (obs.type !== 'TARGET') {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
-                uiFeedback.innerText = "DODGED! +2"; uiFeedback.style.color = "#1565C0";
+                showFeedback("DODGED! +2", "#1565C0");
             } else {
-                uiFeedback.innerText = "MISSED IT!"; uiFeedback.style.color = "black";
+                showFeedback("MISSED IT!", "black");
             }
         }
     });
     
-    // Remove old obstacles and spawn new ones!
     obstacles = obstacles.filter(obs => obs.x > -200);
     let minGap = Math.max(250, 600 - (score * 3));
     if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < 800 - minGap) {
@@ -690,7 +694,6 @@ function drawGame() {
         gCtx.fillRect(i + 20, 640, 20, 20); gCtx.fillStyle = '#2E7D32';
     }
     
-    // DRAW ALL OBSTACLES!
     obstacles.forEach(obs => {
         if (!obs.active) return;
         
@@ -711,16 +714,16 @@ function drawGame() {
             gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 20, obs.y - obs.h + 30); gCtx.lineTo(obs.x + obs.w - 20, obs.y - obs.h + 30); gCtx.fill();
             
         } else if (obs.type === 'LAVA') {
-            gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 15); 
-            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 8);
+            gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - 25, obs.w, 25); 
+            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - 25, obs.w, 10);
             gCtx.fillStyle = '#FFEB3B'; let offset = Math.floor(Date.now() / 200) % 20;
-            gCtx.fillRect(obs.x + 20 + offset, obs.y - obs.h - 5, 10, 5);
-            gCtx.fillRect(obs.x + 60 - offset, obs.y - obs.h - 5, 10, 5);
-            gCtx.fillRect(obs.x + 90 + offset/2, obs.y - obs.h - 5, 10, 5);
+            gCtx.fillRect(obs.x + 20 + offset, obs.y - 20, 10, 8);
+            gCtx.fillRect(obs.x + 60 - offset, obs.y - 15, 12, 6);
+            gCtx.fillRect(obs.x + 100 + offset/2, obs.y - 20, 8, 8);
             
         } else if (obs.type === 'PUDDLE') {
-            gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 10);
-            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - obs.h + 2, obs.w - 20, 4);
+            gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - 20, obs.w, 20);
+            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - 15, obs.w - 20, 5);
 
         } else if (obs.type === 'CACTUS') {
             gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 20, obs.y - 80, 20, 80);
@@ -815,7 +818,10 @@ window.addEventListener('keyup', (e) => {
 });
 
 startBtn.addEventListener('click', () => {
+    // The Ultimate Audio Fix: Kill everything before starting
+    audioManager.stopAll();
     audioManager.playBGM('bg_music.mp3', 0.25);
+    
     if (gameState === 'START' || gameState === 'GAMEOVER') {
         resetGame();
     } else if (gameState === 'PAUSED') {
