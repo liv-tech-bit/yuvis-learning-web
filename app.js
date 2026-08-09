@@ -12,7 +12,7 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER 
+// 2. AUDIO MANAGER
 // ==========================================
 const audioManager = {
     bgm: null,
@@ -200,20 +200,16 @@ function resizeTCanvas() {
 }
 window.addEventListener('resize', resizeTCanvas);
 
-function getCoords(e) {
-    return { x: e.offsetX, y: e.offsetY };
-}
+function getCoords(e) { return { x: e.offsetX, y: e.offsetY }; }
 
 function startDraw(e) { 
     isDrawing = true; lastPos = getCoords(e); tCtx.beginPath(); tCtx.moveTo(lastPos.x, lastPos.y); 
-    audioManager.playTracingSound();
-    tCanvas.setPointerCapture(e.pointerId); 
+    audioManager.playTracingSound(); tCanvas.setPointerCapture(e.pointerId); 
 }
 function drawing(e) {
     if (!isDrawing) return;
     const pos = getCoords(e);
     tCtx.lineWidth = currentBrushSize; tCtx.strokeStyle = currentColor; tCtx.lineTo(pos.x, pos.y); tCtx.stroke();
-    
     if (lastPos) {
         const dx = pos.x - lastPos.x; const dy = pos.y - lastPos.y;
         totalDistance += Math.sqrt(dx * dx + dy * dy);
@@ -225,8 +221,7 @@ function drawing(e) {
     }
 }
 function stopDraw(e) { 
-    isDrawing = false; tCtx.beginPath(); lastPos = null; 
-    tCanvas.releasePointerCapture(e.pointerId);
+    isDrawing = false; tCtx.beginPath(); lastPos = null; tCanvas.releasePointerCapture(e.pointerId);
 }
 
 tCanvas.addEventListener('pointerdown', startDraw); 
@@ -428,7 +423,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME
+// 8. ENDLESS RUNNER GAME (Ultimate Logic Fixes)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -446,15 +441,12 @@ let gameState = 'START';
 let score = 0; let lives = 3; let lastTime = 0; 
 let gameSpeed = 220; 
 
-let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -900, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
+let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -950, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
 let obstacles = [];
 let gameWords = []; let targetWord = null; let groundScrollX = 0;
 
 let lastLane = 350; 
 let lastHazardType = ''; 
-
-let distanceSinceLastSpawn = 0;
-let currentMinGap = 400;
 
 let clouds = [ {x: 100, y: 50, w: 80, h: 30}, {x: 450, y: 80, w: 100, h: 40}, {x: 800, y: 40, w: 90, h: 35} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
@@ -496,8 +488,6 @@ function resetGame() {
     char.y = 350; char.vy = 0; char.isJumping = false; char.isSliding = false; char.jumps = 0;
     
     obstacles = []; 
-    distanceSinceLastSpawn = 0;
-    currentMinGap = 400;
     lastHazardType = ''; 
     spawnObstacle();
     
@@ -512,14 +502,21 @@ function resetGame() {
     gameRAF = requestAnimationFrame(gameLoop);
 }
 
+// FIXED SPAWNER: 70% Words, 30% Hazards. Starts with smaller gaps!
 function spawnObstacle() {
     let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0, type: '' };
-    obs.x = 850;
+    
+    let minGap = Math.max(250, 450 - (score * 2)); 
+    let startX = 850;
+    if (obstacles.length > 0) {
+        startX = Math.max(850, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 50));
+    }
+    obs.x = startX;
 
     let rand = Math.random();
-    if (rand < 0.50) {
+    if (rand < 0.70) {
         obs.type = 'WORD'; 
-        let isCorrect = Math.random() < 0.40; 
+        let isCorrect = Math.random() < 0.60; // 60% chance it is the correct word!
         obs.isCorrectWord = isCorrect;
         
         if(isCorrect) {
@@ -549,8 +546,9 @@ function spawnObstacle() {
         else s = 1.2;
         obs.scale = s;
 
+        // FIXED: Hitboxes now perfectly match the drawings!
         if (chosenHazard === 'MOUNTAIN') {
-            obs.w = 60 * s; obs.h = 70 * s; obs.y = 350;
+            obs.w = 60 * s; obs.h = 60 * s; obs.y = 350;
         } else if (chosenHazard === 'CACTUS') {
             obs.w = 40 * s; obs.h = 60 * s; obs.y = 350;
         } else if (chosenHazard === 'TREE') {
@@ -558,13 +556,13 @@ function spawnObstacle() {
         } else if (chosenHazard === 'ELEPHANT') {
             obs.w = 80 * s; obs.h = 50 * s; obs.y = 350;
         } else if (chosenHazard === 'BIRD') {
-            obs.w = 50 * s; obs.h = 35 * s; obs.y = 280; obs.isSine = true; 
+            obs.w = 50 * s; obs.h = 25 * s; obs.y = 280; obs.isSine = true; 
         } else if (chosenHazard === 'UFO') {
-            obs.w = 60 * s; obs.h = 30 * s; obs.y = 150; obs.isHoming = true; 
+            obs.w = 60 * s; obs.h = 25 * s; obs.y = 150; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            obs.scale = 1; obs.w = 90; obs.h = 25; obs.y = 350; 
+            obs.scale = 1; obs.w = 110; obs.h = 25; obs.y = 350; 
         } else if (chosenHazard === 'PUDDLE') {
-            obs.scale = 1; obs.w = 80; obs.h = 15; obs.y = 350; 
+            obs.scale = 1; obs.w = 90; obs.h = 15; obs.y = 350; 
         }
     }
     obstacles.push(obs);
@@ -607,6 +605,7 @@ function gameLoop(timestamp) {
             obs.y = 260 + Math.sin(Date.now() / 200) * 80;
         }
 
+        // PERFECT HITBOX LOGIC!
         let hitX = char.x + char.w - 10 > obs.x && char.x + 10 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 10 < obs.y;
         
@@ -623,10 +622,6 @@ function gameLoop(timestamp) {
                     
                     targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                     uiTarget.innerText = targetWord.english;
-                    
-                    // THE FIX: This is completely removed so the rest of the board stays intact!
-                    // (Words no longer disappear when you catch the target!)
-
                 } else {
                     lives--;
                     uiLives.innerText = "❤️".repeat(Math.max(0, lives));
@@ -655,11 +650,12 @@ function gameLoop(timestamp) {
         }
     });
     
-    distanceSinceLastSpawn += gameSpeed * dt;
-    if (distanceSinceLastSpawn > currentMinGap) {
+    obstacles = obstacles.filter(obs => obs.x > -200);
+    
+    // FIXED: PERFECT SPACING LOOP
+    let minGap = Math.max(250, 450 - (score * 2));
+    if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < 800 - minGap) {
         spawnObstacle();
-        distanceSinceLastSpawn = 0;
-        currentMinGap = Math.max(250, 600 - (score * 4)); 
     }
     
     drawGame();
