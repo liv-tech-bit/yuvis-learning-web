@@ -12,24 +12,31 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER (Optimized for iPad Safari)
+// 2. AUDIO MANAGER (Total Wipe Fixed)
 // ==========================================
 const audioManager = {
     bgm: null,
+    activeSFX: [], 
     playBGM: function(filename, volume = 0.25) { 
-        if (this.bgm) { this.bgm.pause(); this.bgm = null; }
+        if (this.bgm) { this.bgm.pause(); this.bgm.src = ""; this.bgm = null; }
         this.bgm = new Audio(`audio/${filename}`);
         this.bgm.volume = volume; 
         this.bgm.loop = true;
-        this.bgm.play().catch(e => console.log("Safari blocked BGM autoplay until touch."));
+        this.bgm.play().catch(e => console.log("BGM Safari Block"));
     },
     stopBGM: function() {
-        if (this.bgm) { this.bgm.pause(); this.bgm = null; }
+        if (this.bgm) { this.bgm.pause(); this.bgm.src = ""; this.bgm = null; }
     },
-    // FIXED: PlaySFX no longer creates memory leaks on iPads!
+    stopAll: function() {
+        this.stopBGM();
+        this.activeSFX.forEach(sfx => { sfx.pause(); sfx.src = ""; });
+        this.activeSFX = [];
+    },
     playSFX: function(filename, volume = 1.0) {
         let sfx = new Audio(`audio/${filename}`);
         sfx.volume = volume; 
+        this.activeSFX.push(sfx);
+        sfx.addEventListener('ended', () => { this.activeSFX = this.activeSFX.filter(a => a !== sfx); });
         sfx.play().catch(e => {});
     },
     playTracingSound: function() { this.playSFX('slide.wav', 0.15); }
@@ -37,12 +44,17 @@ const audioManager = {
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-        audioManager.stopBGM(); 
+        audioManager.stopAll(); 
         if (gameState === 'PLAYING') {
             gameState = 'PAUSED';
             document.getElementById('game-overlay').style.display = 'flex';
             document.getElementById('game-overlay-title').innerText = "PAUSED";
             document.getElementById('game-start-btn').innerText = "RESUME";
+        }
+    } else {
+        const activeTab = document.querySelector('.nav-item.active').getAttribute('data-target');
+        if (activeTab === 'tab-games' && gameState === 'PLAYING') {
+            audioManager.playBGM('bg_music.mp3', 0.25);
         }
     }
 });
@@ -148,7 +160,7 @@ function shuffleArray(array) {
 }
 
 // ==========================================
-// 5. DRAWING & TRACING ENGINE (iPad Glitch Fixes)
+// 5. DRAWING & TRACING ENGINE (iPad POINTER FIX)
 // ==========================================
 const tCanvas = document.getElementById('tracing-canvas');
 const tCtx = tCanvas.getContext('2d');
@@ -182,17 +194,15 @@ function resizeTCanvas() {
 }
 window.addEventListener('resize', resizeTCanvas);
 
+// FIXED: Pointer events perfectly handle BOTH Mouse and iPad Touch without glitches!
 function getCoords(e) {
-    if (e.touches && e.touches.length > 0) {
-        const rect = tCanvas.getBoundingClientRect();
-        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
     return { x: e.offsetX, y: e.offsetY };
 }
 
 function startDraw(e) { 
     isDrawing = true; lastPos = getCoords(e); tCtx.beginPath(); tCtx.moveTo(lastPos.x, lastPos.y); 
     audioManager.playTracingSound();
+    tCanvas.setPointerCapture(e.pointerId); // Locks touch to canvas!
 }
 function drawing(e) {
     if (!isDrawing) return;
@@ -209,14 +219,16 @@ function drawing(e) {
         audioManager.playSFX('slide.wav', 1.0); btn.disabled = false;
     }
 }
-function stopDraw() { isDrawing = false; tCtx.beginPath(); lastPos = null; }
+function stopDraw(e) { 
+    isDrawing = false; tCtx.beginPath(); lastPos = null; 
+    tCanvas.releasePointerCapture(e.pointerId);
+}
 
-tCanvas.addEventListener('mousedown', startDraw); tCanvas.addEventListener('mousemove', drawing);
-tCanvas.addEventListener('mouseup', stopDraw); tCanvas.addEventListener('mouseout', stopDraw);
-// FIXED: preventDefault() stops iPad from fighting the drawing!
-tCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, { passive: false });
-tCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); drawing(e); }, { passive: false });
-tCanvas.addEventListener('touchend', (e) => { e.preventDefault(); stopDraw(); }, { passive: false });
+// FIXED: Replaced touch/mouse with unified Pointer events
+tCanvas.addEventListener('pointerdown', startDraw); 
+tCanvas.addEventListener('pointermove', drawing);
+tCanvas.addEventListener('pointerup', stopDraw); 
+tCanvas.addEventListener('pointercancel', stopDraw);
 
 document.getElementById('clear-board-btn').onclick = () => {
     tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height); totalDistance = 0; document.getElementById('done-tracing-btn').disabled = true;
@@ -238,9 +250,7 @@ function openTracingScreen(wordObj, emoji, step = 1) {
     eText.innerText = wordObj.hinglish; eText.style.fontSize = fontSize; eText.style.color = `rgba(0,0,0,${textAlpha})`;
     
     const totalChars = wordObj.hindi.length + wordObj.hinglish.length;
-    // FIXED: Lowered distance requirement for last two steps so they don't get stuck!
-    let difficultyMultiplier = step >= 4 ? 30 : 60; 
-    requiredDistance = Math.max(100, totalChars * difficultyMultiplier);
+    requiredDistance = Math.max(100, totalChars * 50); // Generous completion math
     
     document.getElementById('tracing-screen').classList.remove('hidden');
     document.getElementById('done-tracing-btn').innerText = (isMissionActive && step < 5) ? "Next Step" : "Done!";
@@ -378,7 +388,7 @@ document.querySelectorAll('.nav-item').forEach(button => {
                 audioManager.playBGM('bg_music.mp3', 0.25);
             }
         } else {
-            audioManager.stopBGM();
+            audioManager.stopAll();
             if (gameState === 'PLAYING') {
                 gameState = 'PAUSED'; 
                 document.getElementById('game-overlay').style.display = 'flex';
@@ -412,7 +422,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Ultimate Logic Fix)
+// 8. ENDLESS RUNNER GAME (16:9 Widescreen Fixes)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -430,14 +440,15 @@ let gameState = 'START';
 let score = 0; let lives = 3; let lastTime = 0; 
 let gameSpeed = 220; 
 
-let char = { x: 120, y: 650, w: 50, h: 60, vy: 0, gravity: 2200, jumpForce: -1100, isJumping: false, isSliding: false };
+// FIXED: Physics perfectly tuned for 800x450 Widescreen! Ground is at 350.
+let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -950, isJumping: false, isSliding: false };
 let obstacles = [];
 let gameWords = []; let targetWord = null; let groundScrollX = 0;
 
-let lastLane = 650; 
+let lastLane = 350; 
 let lastHazardType = ''; 
 
-let clouds = [ {x: 100, y: 100, w: 100, h: 40}, {x: 450, y: 150, w: 140, h: 50}, {x: 800, y: 80, w: 120, h: 45} ];
+let clouds = [ {x: 100, y: 50, w: 80, h: 30}, {x: 450, y: 80, w: 100, h: 40}, {x: 800, y: 40, w: 90, h: 35} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 let feedbackTimeout;
 
@@ -474,7 +485,7 @@ function initGame() {
 
 function resetGame() {
     score = 0; lives = 3; gameSpeed = 220; 
-    char.y = 650; char.vy = 0; char.isJumping = false; char.isSliding = false;
+    char.y = 350; char.vy = 0; char.isJumping = false; char.isSliding = false;
     
     obstacles = []; 
     lastHazardType = ''; 
@@ -494,30 +505,29 @@ function resetGame() {
 function spawnObstacle() {
     let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0, type: '' };
     
-    let minGap = Math.max(250, 650 - (score * 3)); 
-    let startX = 800;
+    let minGap = Math.max(300, 700 - (score * 4)); 
+    let startX = 850;
     if (obstacles.length > 0) {
-        startX = Math.max(800, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 150));
+        startX = Math.max(850, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 100));
     }
     obs.x = startX;
 
     let rand = Math.random();
     if (rand < 0.50) {
-        // FIXED: The "Wrong Word Mismatch" bug is solved here!
-        // The object type is ALWAYS 'WORD'. We check if it's correct dynamically at collision!
         obs.type = 'WORD'; 
+        // 40% chance it's the correct word
+        let isCorrect = Math.random() < 0.40; 
+        obs.isCorrectWord = isCorrect;
         
-        let isCorrect = Math.random() < 0.40; // 40% chance it spawns the correct target word
         if(isCorrect) {
             obs.wordObj = targetWord;
         } else {
-            // Guarantee we pick a word that is NOT the target word
             let wrongWords = gameWords.filter(w => w.english !== targetWord.english);
             obs.wordObj = wrongWords.length > 0 ? wrongWords[Math.floor(Math.random() * wrongWords.length)] : gameWords[0];
         }
         
-        obs.w = 100; obs.h = 90; 
-        let lanes = [650, 530, 410];
+        obs.w = 90; obs.h = 45; 
+        let lanes = [350, 260, 170]; // Adjusted for 450px height
         let availableLanes = lanes.filter(l => l !== lastLane);
         obs.y = availableLanes[Math.floor(Math.random() * availableLanes.length)];
         lastLane = obs.y;
@@ -531,28 +541,28 @@ function spawnObstacle() {
 
         let scaleChoice = Math.random();
         let s = 1.0;
-        if (scaleChoice < 0.33) s = 0.7;
+        if (scaleChoice < 0.33) s = 0.8;
         else if (scaleChoice < 0.66) s = 1.0;
-        else s = 1.3;
+        else s = 1.2;
         obs.scale = s;
 
-        // FIXED: Narrower obstacle widths so they are easy to jump!
+        // FIXED: Narrower obstacle widths so jumping over them is very fair!
         if (chosenHazard === 'MOUNTAIN') {
-            obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
+            obs.w = 60 * s; obs.h = 70 * s; obs.y = 350;
         } else if (chosenHazard === 'CACTUS') {
-            obs.w = 60 * s; obs.h = 80 * s; obs.y = 650;
+            obs.w = 40 * s; obs.h = 60 * s; obs.y = 350;
         } else if (chosenHazard === 'TREE') {
-            obs.w = 70 * s; obs.h = 100 * s; obs.y = 650;
+            obs.w = 50 * s; obs.h = 80 * s; obs.y = 350;
         } else if (chosenHazard === 'ELEPHANT') {
-            obs.w = 100 * s; obs.h = 60 * s; obs.y = 650;
+            obs.w = 80 * s; obs.h = 50 * s; obs.y = 350;
         } else if (chosenHazard === 'BIRD') {
-            obs.w = 60 * s; obs.h = 40 * s; obs.y = 540; obs.isSine = true; // Perfect height for ducking
+            obs.w = 50 * s; obs.h = 35 * s; obs.y = 280; obs.isSine = true; 
         } else if (chosenHazard === 'UFO') {
-            obs.w = 80 * s; obs.h = 40 * s; obs.y = 400; obs.isHoming = true; 
+            obs.w = 60 * s; obs.h = 30 * s; obs.y = 150; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            obs.scale = 1; obs.w = 90; obs.h = 40; obs.y = 650; // Narrow width, thick height!
+            obs.scale = 1; obs.w = 110; obs.h = 25; obs.y = 350; 
         } else if (chosenHazard === 'PUDDLE') {
-            obs.scale = 1; obs.w = 80; obs.h = 30; obs.y = 650; // Narrow width, thick height!
+            obs.scale = 1; obs.w = 90; obs.h = 15; obs.y = 350; 
         }
     }
     obstacles.push(obs);
@@ -564,7 +574,9 @@ function gameLoop(timestamp) {
     
     let dt = (timestamp - lastTime) / 1000;
     lastTime = timestamp;
-    if (dt > 0.1) dt = 0.016; 
+    
+    // ANTI-GLITCH: If iPad freezes, don't let dt skyrocket and teleport objects!
+    if (dt > 0.05) dt = 0.016; 
     
     gameSpeed = 220 + (score * 1.5);
     groundScrollX = (groundScrollX + gameSpeed * dt) % 120;
@@ -572,40 +584,38 @@ function gameLoop(timestamp) {
     clouds.forEach(c => { c.x -= (gameSpeed * 0.2) * dt; if(c.x < -150) c.x = 800 + Math.random()*100; });
     trees.forEach(t => { t.x -= (gameSpeed * 0.6) * dt; if(t.x < -100) t.x = 800 + Math.random()*200; });
     
-    if (char.y < 650 || char.vy !== 0) {
+    if (char.y < 350 || char.vy !== 0) {
         char.vy += char.gravity * dt;
         char.y += char.vy * dt;
-        if (char.y >= 650) {
-            char.y = 650; char.vy = 0; char.isJumping = false;
+        if (char.y >= 350) {
+            char.y = 350; char.vy = 0; char.isJumping = false;
         }
     }
-    char.h = char.isSliding ? 30 : 60;
+    char.h = char.isSliding ? 25 : 50; // Shrink hitbox when sliding
     
     obstacles.forEach(obs => {
         if (!obs.active) return;
         obs.x -= gameSpeed * dt;
         
         if (obs.isHoming) {
-            // Tracks towards the hedgehog's center
             let centerTargetY = char.y - (char.h / 2);
             let centerUFOY = obs.y - (obs.h / 2);
             if (centerTargetY < centerUFOY) obs.y -= gameSpeed * 0.5 * dt;
             if (centerTargetY > centerUFOY) obs.y += gameSpeed * 0.5 * dt;
         }
         if (obs.isSine) {
-            obs.y = 540 + Math.sin(Date.now() / 200) * 100;
+            obs.y = 260 + Math.sin(Date.now() / 200) * 80;
         }
 
-        // Perfect Hitbox
-        let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
-        let hitY = char.y > obs.y - obs.h + 10 && char.y - char.h + 10 < obs.y;
+        // PERFECT HITBOX LOGIC: Forgiving on sides, exact on top/bottom
+        let hitX = char.x + char.w - 10 > obs.x && char.x + 10 < obs.x + obs.w;
+        let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 10 < obs.y;
         
         if (hitX && hitY) {
             obs.active = false; 
             
             if (obs.type === 'WORD') {
-                // DYNAMIC WORD CHECK! Prevents "Invisible Wrong Word" bugs!
-                if (obs.wordObj.english === targetWord.english) {
+                if (obs.isCorrectWord) {
                     score += 10;
                     uiScore.innerText = `SCORE: ${score}`;
                     let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
@@ -615,10 +625,15 @@ function gameLoop(timestamp) {
                     // Pick a new target word!
                     targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                     uiTarget.innerText = targetWord.english;
+                    
+                    // FIXED: POOF! All other words vanish so you don't get unfair deaths
+                    obstacles.forEach(o => {
+                        if(o.type === 'WORD' && o.active) o.active = false; 
+                    });
                 } else {
                     lives--;
                     uiLives.innerText = "❤️".repeat(Math.max(0, lives));
-                    showFeedback("WRONG WORD! -1 ❤️", "#D32F2F"); // EXPLICIT FEEDBACK!
+                    showFeedback("WRONG WORD! -1 ❤️", "#D32F2F"); 
                     audioManager.playSFX('wrong.wav'); 
                     if (lives <= 0) triggerGameOver();
                 }
@@ -633,18 +648,18 @@ function gameLoop(timestamp) {
 
         if (obs.active && !obs.passed && obs.x + obs.w < char.x) {
             obs.passed = true;
-            if (obs.type !== 'WORD' || (obs.type === 'WORD' && obs.wordObj.english !== targetWord.english)) {
+            if (obs.type !== 'WORD' || (obs.type === 'WORD' && !obs.isCorrectWord)) {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
                 let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
                 showFeedback(dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)], "#1565C0");
-            } else if (obs.type === 'WORD' && obs.wordObj.english === targetWord.english) {
+            } else if (obs.type === 'WORD' && obs.isCorrectWord) {
                 showFeedback("MISSED IT!", "black");
             }
         }
     });
     
     obstacles = obstacles.filter(obs => obs.x > -200);
-    let minGap = Math.max(250, 600 - (score * 3));
+    let minGap = Math.max(300, 700 - (score * 4));
     if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < 800 - minGap) {
         spawnObstacle();
     }
@@ -655,7 +670,7 @@ function gameLoop(timestamp) {
 
 function triggerGameOver() {
     gameState = 'GAMEOVER';
-    audioManager.stopBGM(); 
+    audioManager.stopAll(); 
     audioManager.playSFX('gameover.mp3', 1.0);
     if (score > gameHighScore) {
         gameHighScore = score;
@@ -673,7 +688,7 @@ function drawGame() {
     gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
     
     gCtx.fillStyle = '#87CEEB'; gCtx.fillRect(0, 0, gCanvas.width, gCanvas.height);
-    gCtx.fillStyle = '#FFEB3B'; gCtx.fillRect(650, 80, 80, 80);
+    gCtx.fillStyle = '#FFEB3B'; gCtx.fillRect(650, 40, 60, 60);
     
     gCtx.fillStyle = 'white';
     clouds.forEach(c => {
@@ -682,20 +697,20 @@ function drawGame() {
     });
 
     trees.forEach(t => {
-        gCtx.fillStyle = '#5D4037'; gCtx.fillRect(t.x + 15, 600, 20, 50);
-        gCtx.fillStyle = '#1B5E20'; gCtx.fillRect(t.x - 5, 520, 60, 80);
-        gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(t.x + 5, 500, 40, 50);
+        gCtx.fillStyle = '#5D4037'; gCtx.fillRect(t.x + 10, 310, 15, 40);
+        gCtx.fillStyle = '#1B5E20'; gCtx.fillRect(t.x - 10, 250, 50, 60);
+        gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(t.x, 230, 30, 40);
     });
 
-    gCtx.fillStyle = '#795548'; gCtx.fillRect(0, 650, gCanvas.width, 150);
+    gCtx.fillStyle = '#795548'; gCtx.fillRect(0, 350, gCanvas.width, 100);
     gCtx.fillStyle = '#5D4037';
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 60) {
-        gCtx.fillRect(i, 670, 20, 20); gCtx.fillRect(i + 30, 710, 20, 20);
+        gCtx.fillRect(i, 370, 20, 20); gCtx.fillRect(i + 30, 410, 20, 20);
     }
     gCtx.fillStyle = '#2E7D32'; 
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 40) {
-        gCtx.fillRect(i, 640, 20, 20); gCtx.fillStyle = '#1B5E20';
-        gCtx.fillRect(i + 20, 640, 20, 20); gCtx.fillStyle = '#2E7D32';
+        gCtx.fillRect(i, 340, 20, 20); gCtx.fillStyle = '#1B5E20';
+        gCtx.fillRect(i + 20, 340, 20, 20); gCtx.fillStyle = '#2E7D32';
     }
     
     obstacles.forEach(obs => {
@@ -705,10 +720,10 @@ function drawGame() {
         if (obs.type === 'WORD') {
             gCtx.fillStyle = '#FFF3E0';
             gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h);
-            gCtx.strokeStyle = 'black'; gCtx.lineWidth = 6;
+            gCtx.strokeStyle = 'black'; gCtx.lineWidth = 4;
             gCtx.strokeRect(obs.x, obs.y - obs.h, obs.w, obs.h);
             gCtx.fillStyle = 'black';
-            gCtx.font = 'bold 22px "Comic Sans MS", sans-serif';
+            gCtx.font = 'bold 20px "Comic Sans MS", sans-serif';
             gCtx.textAlign = 'center'; gCtx.textBaseline = 'middle';
             gCtx.fillText(obs.wordObj.hinglish, obs.x + obs.w/2, obs.y - obs.h/2);
             
@@ -716,57 +731,56 @@ function drawGame() {
             gCtx.fillStyle = '#78909C'; gCtx.beginPath();
             gCtx.moveTo(obs.x, obs.y); gCtx.lineTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + obs.w, obs.y); gCtx.fill();
             gCtx.fillStyle = '#CFD8DC'; gCtx.beginPath();
-            gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 20*s, obs.y - obs.h + 30*s); gCtx.lineTo(obs.x + obs.w - 20*s, obs.y - obs.h + 30*s); gCtx.fill();
+            gCtx.moveTo(obs.x + obs.w/2, obs.y - obs.h); gCtx.lineTo(obs.x + 15*s, obs.y - obs.h + 20*s); gCtx.lineTo(obs.x + obs.w - 15*s, obs.y - obs.h + 20*s); gCtx.fill();
             
         } else if (obs.type === 'LAVA') {
             gCtx.fillStyle = '#D84315'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h); 
-            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 15);
+            gCtx.fillStyle = '#FF5722'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, 10);
             gCtx.fillStyle = '#FFEB3B'; let offset = Math.floor(Date.now() / 200) % 20;
-            gCtx.fillRect(obs.x + 20 + offset, obs.y - obs.h - 5, 10, 5);
-            gCtx.fillRect(obs.x + 60 - offset, obs.y - obs.h - 5, 10, 5);
+            gCtx.fillRect(obs.x + 20 + offset, obs.y - obs.h - 5, 8, 4);
+            gCtx.fillRect(obs.x + 60 - offset, obs.y - obs.h - 5, 8, 4);
             
         } else if (obs.type === 'PUDDLE') {
             gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h);
-            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - obs.h + 5, obs.w - 20, 10);
+            gCtx.fillStyle = '#4FC3F7'; gCtx.fillRect(obs.x + 10, obs.y - obs.h + 3, obs.w - 20, 6);
 
         } else if (obs.type === 'CACTUS') {
-            gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 20*s, obs.y - 80*s, 20*s, 80*s);
-            gCtx.fillRect(obs.x, obs.y - 50*s, 20*s, 15*s); gCtx.fillRect(obs.x, obs.y - 65*s, 15*s, 15*s);
-            gCtx.fillRect(obs.x + 40*s, obs.y - 40*s, 20*s, 15*s); gCtx.fillRect(obs.x + 45*s, obs.y - 55*s, 15*s, 15*s);
+            gCtx.fillStyle = '#388E3C'; gCtx.fillRect(obs.x + 15*s, obs.y - 60*s, 15*s, 60*s);
+            gCtx.fillRect(obs.x, obs.y - 40*s, 15*s, 12*s); gCtx.fillRect(obs.x, obs.y - 50*s, 12*s, 12*s);
+            gCtx.fillRect(obs.x + 30*s, obs.y - 30*s, 15*s, 12*s); gCtx.fillRect(obs.x + 35*s, obs.y - 40*s, 12*s, 12*s);
             
         } else if (obs.type === 'TREE') {
-            gCtx.fillStyle = '#5D4037'; gCtx.fillRect(obs.x + 25*s, obs.y - 40*s, 20*s, 40*s);
-            gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(obs.x, obs.y - 90*s, 70*s, 50*s);
-            gCtx.fillRect(obs.x + 10*s, obs.y - 100*s, 50*s, 20*s);
+            gCtx.fillStyle = '#5D4037'; gCtx.fillRect(obs.x + 20*s, obs.y - 30*s, 15*s, 30*s);
+            gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(obs.x, obs.y - 70*s, 55*s, 40*s);
+            gCtx.fillRect(obs.x + 5*s, obs.y - 80*s, 40*s, 15*s);
 
         } else if (obs.type === 'ELEPHANT') {
-            gCtx.fillStyle = '#9E9E9E'; gCtx.fillRect(obs.x + 20*s, obs.y - 60*s, 80*s, 60*s); 
-            gCtx.fillRect(obs.x, obs.y - 40*s, 20*s, 30*s); gCtx.fillRect(obs.x - 10*s, obs.y - 20*s, 10*s, 20*s); 
-            gCtx.fillRect(obs.x + 30*s, obs.y - 20*s, 10*s, 20*s); gCtx.fillRect(obs.x + 70*s, obs.y - 20*s, 10*s, 20*s); 
-            gCtx.fillStyle = 'black'; gCtx.fillRect(obs.x + 5*s, obs.y - 35*s, 5*s, 5*s); 
+            gCtx.fillStyle = '#9E9E9E'; gCtx.fillRect(obs.x + 15*s, obs.y - 50*s, 60*s, 50*s); 
+            gCtx.fillRect(obs.x, obs.y - 35*s, 15*s, 25*s); gCtx.fillRect(obs.x - 10*s, obs.y - 15*s, 10*s, 15*s); 
+            gCtx.fillRect(obs.x + 25*s, obs.y - 15*s, 10*s, 15*s); gCtx.fillRect(obs.x + 55*s, obs.y - 15*s, 10*s, 15*s); 
+            gCtx.fillStyle = 'black'; gCtx.fillRect(obs.x + 5*s, obs.y - 25*s, 4*s, 4*s); 
             
         } else if (obs.type === 'BIRD') {
-            gCtx.fillStyle = '#000000'; gCtx.fillRect(obs.x + 15*s, obs.y - 20*s, 30*s, 10*s);
+            gCtx.fillStyle = '#000000'; gCtx.fillRect(obs.x + 10*s, obs.y - 15*s, 25*s, 8*s);
             gCtx.fillStyle = '#E53935'; 
-            if (Math.floor(Date.now() / 150) % 2 === 0) gCtx.fillRect(obs.x + 20*s, obs.y - 35*s, 20*s, 15*s); 
-            else gCtx.fillRect(obs.x + 20*s, obs.y - 10*s, 20*s, 15*s); 
-            gCtx.fillStyle = '#FDD835'; gCtx.fillRect(obs.x + 5*s, obs.y - 18*s, 10*s, 6*s);
+            if (Math.floor(Date.now() / 150) % 2 === 0) gCtx.fillRect(obs.x + 15*s, obs.y - 25*s, 15*s, 10*s); 
+            else gCtx.fillRect(obs.x + 15*s, obs.y - 5*s, 15*s, 10*s); 
+            gCtx.fillStyle = '#FDD835'; gCtx.fillRect(obs.x + 2*s, obs.y - 13*s, 8*s, 4*s);
             
         } else if (obs.type === 'UFO') {
-            gCtx.fillStyle = '#455A64'; gCtx.fillRect(obs.x, obs.y - 20*s, 80*s, 20*s);
-            gCtx.fillStyle = '#80CBC4'; gCtx.fillRect(obs.x + 20*s, obs.y - 40*s, 40*s, 20*s);
-            gCtx.fillStyle = '#00E676'; gCtx.fillRect(obs.x + 35*s, obs.y - 30*s, 10*s, 10*s);
+            gCtx.fillStyle = '#455A64'; gCtx.fillRect(obs.x, obs.y - 15*s, 60*s, 15*s);
+            gCtx.fillStyle = '#80CBC4'; gCtx.fillRect(obs.x + 15*s, obs.y - 30*s, 30*s, 15*s);
+            gCtx.fillStyle = '#00E676'; gCtx.fillRect(obs.x + 25*s, obs.y - 25*s, 8*s, 8*s);
             gCtx.fillStyle = '#FF5252'; 
             if(Math.floor(Date.now() / 100) % 2 === 0) { 
-                gCtx.fillRect(obs.x + 10*s, obs.y, 10*s, 10*s); gCtx.fillRect(obs.x + 60*s, obs.y, 10*s, 10*s);
+                gCtx.fillRect(obs.x + 5*s, obs.y, 8*s, 8*s); gCtx.fillRect(obs.x + 45*s, obs.y, 8*s, 8*s);
             }
         }
     });
     
-    // UN-FLIPPED HEDGEHOG!
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
-    let sc = 4; 
+    let sc = 3; // Scaled down for 450px Canvas
     
     if (char.isSliding) {
         gCtx.fillStyle = '#5D4037'; gCtx.fillRect(-8*sc, -8*sc, 14*sc, 8*sc);
@@ -789,17 +803,15 @@ function drawGame() {
     gCtx.restore();
 }
 
-// Controls
 function jump() {
-    if (gameState === 'PLAYING' && char.y === 650) {
+    if (gameState === 'PLAYING' && char.y === 350) {
         char.vy = char.jumpForce; char.isJumping = true;
         audioManager.playSFX('jump.wav');
     }
 }
 
-document.getElementById('btn-jump').addEventListener('mousedown', jump);
-// ADDED e.stopPropagation() to fix iPad delay buttons!
-document.getElementById('btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); jump(); }, { passive: false });
+// FIXED: e.stopPropagation() prevents the iPad from delaying the buttons!
+document.getElementById('btn-jump').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); jump(); });
 
 const slideBtn = document.getElementById('btn-slide');
 function startSlide() { 
@@ -810,12 +822,9 @@ function startSlide() {
 }
 function stopSlide() { char.isSliding = false; }
 
-slideBtn.addEventListener('mousedown', startSlide);
-slideBtn.addEventListener('mouseup', stopSlide);
-slideBtn.addEventListener('mouseleave', stopSlide);
-// ADDED e.stopPropagation() to fix iPad delay buttons!
-slideBtn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); startSlide(); }, { passive: false });
-slideBtn.addEventListener('touchend', stopSlide);
+slideBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); startSlide(); });
+slideBtn.addEventListener('pointerup', stopSlide);
+slideBtn.addEventListener('pointerout', stopSlide);
 
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
@@ -825,8 +834,11 @@ window.addEventListener('keyup', (e) => {
     if (e.code === 'ArrowDown') stopSlide();
 });
 
-startBtn.addEventListener('click', () => {
+startBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    audioManager.stopAll();
     audioManager.playBGM('bg_music.mp3', 0.25);
+    
     if (gameState === 'START' || gameState === 'GAMEOVER') {
         resetGame();
     } else if (gameState === 'PAUSED') {
@@ -837,7 +849,8 @@ startBtn.addEventListener('click', () => {
     }
 });
 
-document.getElementById('game-pause-btn').addEventListener('click', () => {
+document.getElementById('game-pause-btn').addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
     if (gameState === 'PLAYING') {
         gameState = 'PAUSED';
         document.getElementById('game-overlay').style.display = 'flex';
