@@ -12,7 +12,7 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER (Total Wipe Fixed)
+// 2. AUDIO MANAGER 
 // ==========================================
 const audioManager = {
     bgm: null,
@@ -122,12 +122,11 @@ function renderCalendar() {
             const dayBox = document.createElement('div');
             dayBox.className = 'day-box';
             
-            // THE NEW DIRECT CLICK LOGIC
             if (thisDayAbs < absoluteDay) { 
                 dayBox.classList.add('completed'); dayBox.innerText = '⭐'; 
             } else if (thisDayAbs === absoluteDay) { 
                 dayBox.classList.add('current'); dayBox.innerText = '🎯'; 
-                dayBox.onclick = startDailyMission; // Starts directly from the day box!
+                dayBox.onclick = startDailyMission; 
             } else { 
                 dayBox.innerText = d; 
             }
@@ -167,7 +166,7 @@ function shuffleArray(array) {
 }
 
 // ==========================================
-// 5. DRAWING & TRACING ENGINE (iPad POINTER FIX)
+// 5. DRAWING & TRACING ENGINE
 // ==========================================
 const tCanvas = document.getElementById('tracing-canvas');
 const tCtx = tCanvas.getContext('2d');
@@ -279,7 +278,7 @@ document.getElementById('done-tracing-btn').onclick = () => {
 };
 
 // ==========================================
-// 6. MISSION LOGIC
+// 6. MISSION & MATCHING LOGIC
 // ==========================================
 function startDailyMission() {
     const todayWords = getTodaySrsWords(absoluteDay);
@@ -429,7 +428,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Perfect Logic)
+// 8. ENDLESS RUNNER GAME
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -447,7 +446,6 @@ let gameState = 'START';
 let score = 0; let lives = 3; let lastTime = 0; 
 let gameSpeed = 220; 
 
-// THE DOUBLE JUMP UPGRADE!
 let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -900, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
 let obstacles = [];
 let gameWords = []; let targetWord = null; let groundScrollX = 0;
@@ -455,7 +453,6 @@ let gameWords = []; let targetWord = null; let groundScrollX = 0;
 let lastLane = 350; 
 let lastHazardType = ''; 
 
-// THE DISTANCE TRACKER (Fixes the "1 Minute Ghost Gap" bug!)
 let distanceSinceLastSpawn = 0;
 let currentMinGap = 400;
 
@@ -590,7 +587,6 @@ function gameLoop(timestamp) {
     if (char.y < 350 || char.vy !== 0) {
         char.vy += char.gravity * dt;
         char.y += char.vy * dt;
-        // The Double Jump Landing Reset!
         if (char.y >= 350) {
             char.y = 350; char.vy = 0; char.isJumping = false; char.jumps = 0; 
         }
@@ -628,10 +624,9 @@ function gameLoop(timestamp) {
                     targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                     uiTarget.innerText = targetWord.english;
                     
-                    // CLEARS ALL OTHER WORDS TO PREVENT UNFAIR DEATHS!
-                    obstacles.forEach(o => {
-                        if(o.type === 'WORD' && o.active) o.active = false; 
-                    });
+                    // THE FIX: This is completely removed so the rest of the board stays intact!
+                    // (Words no longer disappear when you catch the target!)
+
                 } else {
                     lives--;
                     uiLives.innerText = "❤️".repeat(Math.max(0, lives));
@@ -660,12 +655,11 @@ function gameLoop(timestamp) {
         }
     });
     
-    // THE DISTANCE TIMER (Fixes the 1-minute Gap bug!)
     distanceSinceLastSpawn += gameSpeed * dt;
     if (distanceSinceLastSpawn > currentMinGap) {
         spawnObstacle();
         distanceSinceLastSpawn = 0;
-        currentMinGap = Math.max(250, 600 - (score * 4)); // Recalculate gap!
+        currentMinGap = Math.max(250, 600 - (score * 4)); 
     }
     
     drawGame();
@@ -706,12 +700,11 @@ function drawGame() {
         gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(t.x, 230, 30, 40);
     });
 
-    // FIXED: The deep dirt floor, prevents blue sky underneath!
     gCtx.fillStyle = '#795548'; gCtx.fillRect(0, 350, gCanvas.width, 500); 
     gCtx.fillStyle = '#5D4037';
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 60) {
         gCtx.fillRect(i, 370, 20, 20); gCtx.fillRect(i + 30, 410, 20, 20);
-        gCtx.fillRect(i + 15, 450, 20, 20); // Extra deep dirt
+        gCtx.fillRect(i + 15, 450, 20, 20); 
     }
     gCtx.fillStyle = '#2E7D32'; 
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 40) {
@@ -809,7 +802,6 @@ function drawGame() {
     gCtx.restore();
 }
 
-// THE DOUBLE JUMP LOGIC
 function jump() {
     if (gameState === 'PLAYING' && char.jumps < char.maxJumps) {
         char.vy = char.jumpForce; 
