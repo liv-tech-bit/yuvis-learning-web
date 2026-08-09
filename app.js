@@ -12,64 +12,37 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER 
+// 2. AUDIO MANAGER (Optimized for iPad Safari)
 // ==========================================
 const audioManager = {
     bgm: null,
-    activeSFX: [], 
     playBGM: function(filename, volume = 0.25) { 
-        if (this.bgm) { 
-            this.bgm.pause(); 
-            this.bgm.src = ""; 
-            this.bgm = null; 
-        }
+        if (this.bgm) { this.bgm.pause(); this.bgm = null; }
         this.bgm = new Audio(`audio/${filename}`);
         this.bgm.volume = volume; 
         this.bgm.loop = true;
-        this.bgm.play().catch(e => console.error("BGM blocked:", e));
+        this.bgm.play().catch(e => console.log("Safari blocked BGM autoplay until touch."));
     },
     stopBGM: function() {
-        if (this.bgm) { 
-            this.bgm.pause(); 
-            this.bgm.src = ""; 
-            this.bgm = null; 
-        }
+        if (this.bgm) { this.bgm.pause(); this.bgm = null; }
     },
-    stopAll: function() {
-        this.stopBGM();
-        this.activeSFX.forEach(sfx => {
-            sfx.pause();
-            sfx.src = "";
-        });
-        this.activeSFX = [];
-    },
+    // FIXED: PlaySFX no longer creates memory leaks on iPads!
     playSFX: function(filename, volume = 1.0) {
         let sfx = new Audio(`audio/${filename}`);
         sfx.volume = volume; 
-        
-        this.activeSFX.push(sfx);
-        sfx.addEventListener('ended', () => {
-            this.activeSFX = this.activeSFX.filter(a => a !== sfx);
-        });
-        
-        sfx.play().catch(e => console.error(`Error: ${filename}`, e));
+        sfx.play().catch(e => {});
     },
     playTracingSound: function() { this.playSFX('slide.wav', 0.15); }
 };
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-        audioManager.stopAll(); 
+        audioManager.stopBGM(); 
         if (gameState === 'PLAYING') {
             gameState = 'PAUSED';
             document.getElementById('game-overlay').style.display = 'flex';
             document.getElementById('game-overlay-title').innerText = "PAUSED";
             document.getElementById('game-start-btn').innerText = "RESUME";
-        }
-    } else {
-        const activeTab = document.querySelector('.nav-item.active').getAttribute('data-target');
-        if (activeTab === 'tab-games' && gameState === 'PLAYING') {
-            audioManager.playBGM('bg_music.mp3', 0.25);
         }
     }
 });
@@ -175,7 +148,7 @@ function shuffleArray(array) {
 }
 
 // ==========================================
-// 5. DRAWING & TRACING ENGINE
+// 5. DRAWING & TRACING ENGINE (iPad Glitch Fixes)
 // ==========================================
 const tCanvas = document.getElementById('tracing-canvas');
 const tCtx = tCanvas.getContext('2d');
@@ -240,9 +213,10 @@ function stopDraw() { isDrawing = false; tCtx.beginPath(); lastPos = null; }
 
 tCanvas.addEventListener('mousedown', startDraw); tCanvas.addEventListener('mousemove', drawing);
 tCanvas.addEventListener('mouseup', stopDraw); tCanvas.addEventListener('mouseout', stopDraw);
+// FIXED: preventDefault() stops iPad from fighting the drawing!
 tCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, { passive: false });
 tCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); drawing(e); }, { passive: false });
-tCanvas.addEventListener('touchend', stopDraw); tCanvas.addEventListener('touchcancel', stopDraw);
+tCanvas.addEventListener('touchend', (e) => { e.preventDefault(); stopDraw(); }, { passive: false });
 
 document.getElementById('clear-board-btn').onclick = () => {
     tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height); totalDistance = 0; document.getElementById('done-tracing-btn').disabled = true;
@@ -264,7 +238,9 @@ function openTracingScreen(wordObj, emoji, step = 1) {
     eText.innerText = wordObj.hinglish; eText.style.fontSize = fontSize; eText.style.color = `rgba(0,0,0,${textAlpha})`;
     
     const totalChars = wordObj.hindi.length + wordObj.hinglish.length;
-    requiredDistance = Math.max(150, totalChars * 60);
+    // FIXED: Lowered distance requirement for last two steps so they don't get stuck!
+    let difficultyMultiplier = step >= 4 ? 30 : 60; 
+    requiredDistance = Math.max(100, totalChars * difficultyMultiplier);
     
     document.getElementById('tracing-screen').classList.remove('hidden');
     document.getElementById('done-tracing-btn').innerText = (isMissionActive && step < 5) ? "Next Step" : "Done!";
@@ -402,7 +378,7 @@ document.querySelectorAll('.nav-item').forEach(button => {
                 audioManager.playBGM('bg_music.mp3', 0.25);
             }
         } else {
-            audioManager.stopAll();
+            audioManager.stopBGM();
             if (gameState === 'PLAYING') {
                 gameState = 'PAUSED'; 
                 document.getElementById('game-overlay').style.display = 'flex';
@@ -436,7 +412,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Ultimate Polish)
+// 8. ENDLESS RUNNER GAME (Ultimate Logic Fix)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -452,7 +428,7 @@ const startBtn = document.getElementById('game-start-btn');
 let gameRAF;
 let gameState = 'START'; 
 let score = 0; let lives = 3; let lastTime = 0; 
-let gameSpeed = 200; 
+let gameSpeed = 220; 
 
 let char = { x: 120, y: 650, w: 50, h: 60, vy: 0, gravity: 2200, jumpForce: -1100, isJumping: false, isSliding: false };
 let obstacles = [];
@@ -468,11 +444,9 @@ let feedbackTimeout;
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
-    
     uiFeedback.classList.remove('pop-anim');
     void uiFeedback.offsetWidth; 
     uiFeedback.classList.add('pop-anim');
-
     clearTimeout(feedbackTimeout);
     feedbackTimeout = setTimeout(() => {
         if (gameState === 'PLAYING') uiFeedback.innerText = "";
@@ -499,7 +473,7 @@ function initGame() {
 }
 
 function resetGame() {
-    score = 0; lives = 3; gameSpeed = 200; 
+    score = 0; lives = 3; gameSpeed = 220; 
     char.y = 650; char.vy = 0; char.isJumping = false; char.isSliding = false;
     
     obstacles = []; 
@@ -518,7 +492,7 @@ function resetGame() {
 }
 
 function spawnObstacle() {
-    let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0 };
+    let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0, type: '' };
     
     let minGap = Math.max(250, 650 - (score * 3)); 
     let startX = 800;
@@ -528,16 +502,21 @@ function spawnObstacle() {
     obs.x = startX;
 
     let rand = Math.random();
-    if (rand < 0.60) {
-        lastHazardType = ''; 
-        obs.type = rand < 0.35 ? 'TARGET' : 'DANGER'; 
-        if(obs.type === 'TARGET') obs.wordObj = targetWord;
-        else {
+    if (rand < 0.50) {
+        // FIXED: The "Wrong Word Mismatch" bug is solved here!
+        // The object type is ALWAYS 'WORD'. We check if it's correct dynamically at collision!
+        obs.type = 'WORD'; 
+        
+        let isCorrect = Math.random() < 0.40; // 40% chance it spawns the correct target word
+        if(isCorrect) {
+            obs.wordObj = targetWord;
+        } else {
+            // Guarantee we pick a word that is NOT the target word
             let wrongWords = gameWords.filter(w => w.english !== targetWord.english);
             obs.wordObj = wrongWords.length > 0 ? wrongWords[Math.floor(Math.random() * wrongWords.length)] : gameWords[0];
         }
-        obs.w = 100; obs.h = 90; 
         
+        obs.w = 100; obs.h = 90; 
         let lanes = [650, 530, 410];
         let availableLanes = lanes.filter(l => l !== lastLane);
         obs.y = availableLanes[Math.floor(Math.random() * availableLanes.length)];
@@ -550,15 +529,14 @@ function spawnObstacle() {
         lastHazardType = chosenHazard; 
         obs.type = chosenHazard;
 
-        // DYNAMIC SIZES! Small (0.7), Medium (1.0), or Big (1.4)
         let scaleChoice = Math.random();
         let s = 1.0;
         if (scaleChoice < 0.33) s = 0.7;
         else if (scaleChoice < 0.66) s = 1.0;
-        else s = 1.4;
+        else s = 1.3;
         obs.scale = s;
 
-        // Note: Lava and Puddle ignore 's' scaling so they stay wide to jump over
+        // FIXED: Narrower obstacle widths so they are easy to jump!
         if (chosenHazard === 'MOUNTAIN') {
             obs.w = 80 * s; obs.h = 80 * s; obs.y = 650;
         } else if (chosenHazard === 'CACTUS') {
@@ -568,13 +546,13 @@ function spawnObstacle() {
         } else if (chosenHazard === 'ELEPHANT') {
             obs.w = 100 * s; obs.h = 60 * s; obs.y = 650;
         } else if (chosenHazard === 'BIRD') {
-            obs.w = 60 * s; obs.h = 40 * s; obs.y = 500; obs.isSine = true; 
+            obs.w = 60 * s; obs.h = 40 * s; obs.y = 540; obs.isSine = true; // Perfect height for ducking
         } else if (chosenHazard === 'UFO') {
             obs.w = 80 * s; obs.h = 40 * s; obs.y = 400; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            obs.scale = 1; obs.w = 140; obs.h = 40; obs.y = 650; 
+            obs.scale = 1; obs.w = 90; obs.h = 40; obs.y = 650; // Narrow width, thick height!
         } else if (chosenHazard === 'PUDDLE') {
-            obs.scale = 1; obs.w = 140; obs.h = 30; obs.y = 650; 
+            obs.scale = 1; obs.w = 80; obs.h = 30; obs.y = 650; // Narrow width, thick height!
         }
     }
     obstacles.push(obs);
@@ -588,7 +566,7 @@ function gameLoop(timestamp) {
     lastTime = timestamp;
     if (dt > 0.1) dt = 0.016; 
     
-    gameSpeed = 200 + (score * 1.5);
+    gameSpeed = 220 + (score * 1.5);
     groundScrollX = (groundScrollX + gameSpeed * dt) % 120;
     
     clouds.forEach(c => { c.x -= (gameSpeed * 0.2) * dt; if(c.x < -150) c.x = 800 + Math.random()*100; });
@@ -608,57 +586,58 @@ function gameLoop(timestamp) {
         obs.x -= gameSpeed * dt;
         
         if (obs.isHoming) {
+            // Tracks towards the hedgehog's center
             let centerTargetY = char.y - (char.h / 2);
             let centerUFOY = obs.y - (obs.h / 2);
             if (centerTargetY < centerUFOY) obs.y -= gameSpeed * 0.5 * dt;
             if (centerTargetY > centerUFOY) obs.y += gameSpeed * 0.5 * dt;
         }
         if (obs.isSine) {
-            obs.y = 520 + Math.sin(Date.now() / 200) * 100;
+            obs.y = 540 + Math.sin(Date.now() / 200) * 100;
         }
 
+        // Perfect Hitbox
         let hitX = char.x + char.w - 15 > obs.x && char.x + 15 < obs.x + obs.w;
-        let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 15 < obs.y;
+        let hitY = char.y > obs.y - obs.h + 10 && char.y - char.h + 10 < obs.y;
         
         if (hitX && hitY) {
             obs.active = false; 
-            if (obs.type === 'TARGET') {
-                score += 10;
-                uiScore.innerText = `SCORE: ${score}`;
-                
-                let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
-                showFeedback(catchTexts[Math.floor(Math.random() * catchTexts.length)], "#2E7D32");
-                
-                audioManager.playSFX('pickup.wav');
-                targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
-                uiTarget.innerText = targetWord.english;
-                
-            } else if (obs.type === 'DANGER') {
-                // EXPLICIT WRONG WORD FEEDBACK
-                lives--;
-                uiLives.innerText = "❤️".repeat(Math.max(0, lives));
-                showFeedback("WRONG WORD! -1 ❤️", "#D32F2F");
-                audioManager.playSFX('wrong.wav'); // Different sound for wrong word
-                
-                if (lives <= 0) triggerGameOver();
-                
+            
+            if (obs.type === 'WORD') {
+                // DYNAMIC WORD CHECK! Prevents "Invisible Wrong Word" bugs!
+                if (obs.wordObj.english === targetWord.english) {
+                    score += 10;
+                    uiScore.innerText = `SCORE: ${score}`;
+                    let catchTexts = ["AWESOME! +10", "PERFECT! +10", "GENIUS! +10", "EPIC! +10"];
+                    showFeedback(catchTexts[Math.floor(Math.random() * catchTexts.length)], "#2E7D32");
+                    audioManager.playSFX('pickup.wav');
+                    
+                    // Pick a new target word!
+                    targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
+                    uiTarget.innerText = targetWord.english;
+                } else {
+                    lives--;
+                    uiLives.innerText = "❤️".repeat(Math.max(0, lives));
+                    showFeedback("WRONG WORD! -1 ❤️", "#D32F2F"); // EXPLICIT FEEDBACK!
+                    audioManager.playSFX('wrong.wav'); 
+                    if (lives <= 0) triggerGameOver();
+                }
             } else {
                 lives--;
                 uiLives.innerText = "❤️".repeat(Math.max(0, lives));
                 showFeedback("OUCH! -1 LIFE", "#D32F2F");
                 audioManager.playSFX('explosion.wav');
-                
                 if (lives <= 0) triggerGameOver();
             }
         }
 
         if (obs.active && !obs.passed && obs.x + obs.w < char.x) {
             obs.passed = true;
-            if (obs.type !== 'TARGET') {
+            if (obs.type !== 'WORD' || (obs.type === 'WORD' && obs.wordObj.english !== targetWord.english)) {
                 score += 2; uiScore.innerText = `SCORE: ${score}`;
                 let dodgeTexts = ["DODGED! +2", "WHOOSH! +2", "NICE! +2", "QUICK! +2", "SLICK! +2"];
                 showFeedback(dodgeTexts[Math.floor(Math.random() * dodgeTexts.length)], "#1565C0");
-            } else {
+            } else if (obs.type === 'WORD' && obs.wordObj.english === targetWord.english) {
                 showFeedback("MISSED IT!", "black");
             }
         }
@@ -676,7 +655,7 @@ function gameLoop(timestamp) {
 
 function triggerGameOver() {
     gameState = 'GAMEOVER';
-    audioManager.stopAll(); 
+    audioManager.stopBGM(); 
     audioManager.playSFX('gameover.mp3', 1.0);
     if (score > gameHighScore) {
         gameHighScore = score;
@@ -723,7 +702,7 @@ function drawGame() {
         if (!obs.active) return;
         let s = obs.scale || 1.0;
         
-        if (obs.type === 'TARGET' || obs.type === 'DANGER') {
+        if (obs.type === 'WORD') {
             gCtx.fillStyle = '#FFF3E0';
             gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h);
             gCtx.strokeStyle = 'black'; gCtx.lineWidth = 6;
@@ -745,7 +724,6 @@ function drawGame() {
             gCtx.fillStyle = '#FFEB3B'; let offset = Math.floor(Date.now() / 200) % 20;
             gCtx.fillRect(obs.x + 20 + offset, obs.y - obs.h - 5, 10, 5);
             gCtx.fillRect(obs.x + 60 - offset, obs.y - obs.h - 5, 10, 5);
-            gCtx.fillRect(obs.x + 100 + offset/2, obs.y - obs.h - 5, 10, 5);
             
         } else if (obs.type === 'PUDDLE') {
             gCtx.fillStyle = '#1E88E5'; gCtx.fillRect(obs.x, obs.y - obs.h, obs.w, obs.h);
@@ -785,7 +763,7 @@ function drawGame() {
         }
     });
     
-    // UN-FLIPPED HEDGEHOG (Natively Facing Right/Forward!)
+    // UN-FLIPPED HEDGEHOG!
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
     let sc = 4; 
@@ -811,6 +789,7 @@ function drawGame() {
     gCtx.restore();
 }
 
+// Controls
 function jump() {
     if (gameState === 'PLAYING' && char.y === 650) {
         char.vy = char.jumpForce; char.isJumping = true;
@@ -819,7 +798,8 @@ function jump() {
 }
 
 document.getElementById('btn-jump').addEventListener('mousedown', jump);
-document.getElementById('btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, { passive: false });
+// ADDED e.stopPropagation() to fix iPad delay buttons!
+document.getElementById('btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); jump(); }, { passive: false });
 
 const slideBtn = document.getElementById('btn-slide');
 function startSlide() { 
@@ -833,7 +813,8 @@ function stopSlide() { char.isSliding = false; }
 slideBtn.addEventListener('mousedown', startSlide);
 slideBtn.addEventListener('mouseup', stopSlide);
 slideBtn.addEventListener('mouseleave', stopSlide);
-slideBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startSlide(); }, { passive: false });
+// ADDED e.stopPropagation() to fix iPad delay buttons!
+slideBtn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); startSlide(); }, { passive: false });
 slideBtn.addEventListener('touchend', stopSlide);
 
 window.addEventListener('keydown', (e) => {
@@ -845,9 +826,7 @@ window.addEventListener('keyup', (e) => {
 });
 
 startBtn.addEventListener('click', () => {
-    audioManager.stopAll();
     audioManager.playBGM('bg_music.mp3', 0.25);
-    
     if (gameState === 'START' || gameState === 'GAMEOVER') {
         resetGame();
     } else if (gameState === 'PAUSED') {
