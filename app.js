@@ -121,9 +121,16 @@ function renderCalendar() {
             const thisDayAbs = ((w - 1) * 7) + d;
             const dayBox = document.createElement('div');
             dayBox.className = 'day-box';
-            if (thisDayAbs < absoluteDay) { dayBox.classList.add('completed'); dayBox.innerText = '⭐'; } 
-            else if (thisDayAbs === absoluteDay) { dayBox.classList.add('current'); dayBox.innerText = '🎯'; } 
-            else { dayBox.innerText = d; }
+            
+            // THE NEW DIRECT CLICK LOGIC
+            if (thisDayAbs < absoluteDay) { 
+                dayBox.classList.add('completed'); dayBox.innerText = '⭐'; 
+            } else if (thisDayAbs === absoluteDay) { 
+                dayBox.classList.add('current'); dayBox.innerText = '🎯'; 
+                dayBox.onclick = startDailyMission; // Starts directly from the day box!
+            } else { 
+                dayBox.innerText = d; 
+            }
             daysRow.appendChild(dayBox);
         }
         weekBlock.appendChild(daysRow);
@@ -194,7 +201,6 @@ function resizeTCanvas() {
 }
 window.addEventListener('resize', resizeTCanvas);
 
-// FIXED: Pointer events perfectly handle BOTH Mouse and iPad Touch without glitches!
 function getCoords(e) {
     return { x: e.offsetX, y: e.offsetY };
 }
@@ -202,7 +208,7 @@ function getCoords(e) {
 function startDraw(e) { 
     isDrawing = true; lastPos = getCoords(e); tCtx.beginPath(); tCtx.moveTo(lastPos.x, lastPos.y); 
     audioManager.playTracingSound();
-    tCanvas.setPointerCapture(e.pointerId); // Locks touch to canvas!
+    tCanvas.setPointerCapture(e.pointerId); 
 }
 function drawing(e) {
     if (!isDrawing) return;
@@ -224,7 +230,6 @@ function stopDraw(e) {
     tCanvas.releasePointerCapture(e.pointerId);
 }
 
-// FIXED: Replaced touch/mouse with unified Pointer events
 tCanvas.addEventListener('pointerdown', startDraw); 
 tCanvas.addEventListener('pointermove', drawing);
 tCanvas.addEventListener('pointerup', stopDraw); 
@@ -250,7 +255,8 @@ function openTracingScreen(wordObj, emoji, step = 1) {
     eText.innerText = wordObj.hinglish; eText.style.fontSize = fontSize; eText.style.color = `rgba(0,0,0,${textAlpha})`;
     
     const totalChars = wordObj.hindi.length + wordObj.hinglish.length;
-    requiredDistance = Math.max(100, totalChars * 50); // Generous completion math
+    let difficultyMultiplier = step >= 4 ? 30 : 60; 
+    requiredDistance = Math.max(100, totalChars * difficultyMultiplier);
     
     document.getElementById('tracing-screen').classList.remove('hidden');
     document.getElementById('done-tracing-btn').innerText = (isMissionActive && step < 5) ? "Next Step" : "Done!";
@@ -273,12 +279,13 @@ document.getElementById('done-tracing-btn').onclick = () => {
 };
 
 // ==========================================
-// 6. MISSION & MATCHING LOGIC
+// 6. MISSION LOGIC
 // ==========================================
-document.getElementById('start-mission-btn').addEventListener('click', () => {
+function startDailyMission() {
     const todayWords = getTodaySrsWords(absoluteDay);
     if (todayWords.length === 0) return;
     audioManager.playSFX('gamestart.mp3'); isMissionActive = true; tracingQueue = [];
+    
     const isSunday = ((absoluteDay - 1) % 7) + 1 === 7;
     const reviewCount = isSunday ? todayWords.length : Math.max(0, todayWords.length - 2);
     if (isSunday) { todayWords.forEach(w => tracingQueue.push({ word: w, startStep: 5 })); } 
@@ -291,7 +298,7 @@ document.getElementById('start-mission-btn').addEventListener('click', () => {
     let shuffled = shuffleArray([...todayWords]);
     for (let i = 0; i < shuffled.length; i += 6) { matchingBatches.push(shuffled.slice(i, i + 6)); }
     currentBatchIndex = 0; processNextMissionTask();
-});
+}
 
 function processNextMissionTask() {
     if (tracingQueue.length > 0) {
@@ -422,7 +429,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (16:9 Widescreen Fixes)
+// 8. ENDLESS RUNNER GAME (Perfect Logic)
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -440,13 +447,17 @@ let gameState = 'START';
 let score = 0; let lives = 3; let lastTime = 0; 
 let gameSpeed = 220; 
 
-// FIXED: Physics perfectly tuned for 800x450 Widescreen! Ground is at 350.
-let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -950, isJumping: false, isSliding: false };
+// THE DOUBLE JUMP UPGRADE!
+let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -900, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
 let obstacles = [];
 let gameWords = []; let targetWord = null; let groundScrollX = 0;
 
 let lastLane = 350; 
 let lastHazardType = ''; 
+
+// THE DISTANCE TRACKER (Fixes the "1 Minute Ghost Gap" bug!)
+let distanceSinceLastSpawn = 0;
+let currentMinGap = 400;
 
 let clouds = [ {x: 100, y: 50, w: 80, h: 30}, {x: 450, y: 80, w: 100, h: 40}, {x: 800, y: 40, w: 90, h: 35} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
@@ -485,9 +496,11 @@ function initGame() {
 
 function resetGame() {
     score = 0; lives = 3; gameSpeed = 220; 
-    char.y = 350; char.vy = 0; char.isJumping = false; char.isSliding = false;
+    char.y = 350; char.vy = 0; char.isJumping = false; char.isSliding = false; char.jumps = 0;
     
     obstacles = []; 
+    distanceSinceLastSpawn = 0;
+    currentMinGap = 400;
     lastHazardType = ''; 
     spawnObstacle();
     
@@ -504,18 +517,11 @@ function resetGame() {
 
 function spawnObstacle() {
     let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0, type: '' };
-    
-    let minGap = Math.max(300, 700 - (score * 4)); 
-    let startX = 850;
-    if (obstacles.length > 0) {
-        startX = Math.max(850, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 100));
-    }
-    obs.x = startX;
+    obs.x = 850;
 
     let rand = Math.random();
     if (rand < 0.50) {
         obs.type = 'WORD'; 
-        // 40% chance it's the correct word
         let isCorrect = Math.random() < 0.40; 
         obs.isCorrectWord = isCorrect;
         
@@ -527,7 +533,7 @@ function spawnObstacle() {
         }
         
         obs.w = 90; obs.h = 45; 
-        let lanes = [350, 260, 170]; // Adjusted for 450px height
+        let lanes = [350, 260, 170];
         let availableLanes = lanes.filter(l => l !== lastLane);
         obs.y = availableLanes[Math.floor(Math.random() * availableLanes.length)];
         lastLane = obs.y;
@@ -546,7 +552,6 @@ function spawnObstacle() {
         else s = 1.2;
         obs.scale = s;
 
-        // FIXED: Narrower obstacle widths so jumping over them is very fair!
         if (chosenHazard === 'MOUNTAIN') {
             obs.w = 60 * s; obs.h = 70 * s; obs.y = 350;
         } else if (chosenHazard === 'CACTUS') {
@@ -560,9 +565,9 @@ function spawnObstacle() {
         } else if (chosenHazard === 'UFO') {
             obs.w = 60 * s; obs.h = 30 * s; obs.y = 150; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            obs.scale = 1; obs.w = 110; obs.h = 25; obs.y = 350; 
+            obs.scale = 1; obs.w = 90; obs.h = 25; obs.y = 350; 
         } else if (chosenHazard === 'PUDDLE') {
-            obs.scale = 1; obs.w = 90; obs.h = 15; obs.y = 350; 
+            obs.scale = 1; obs.w = 80; obs.h = 15; obs.y = 350; 
         }
     }
     obstacles.push(obs);
@@ -574,8 +579,6 @@ function gameLoop(timestamp) {
     
     let dt = (timestamp - lastTime) / 1000;
     lastTime = timestamp;
-    
-    // ANTI-GLITCH: If iPad freezes, don't let dt skyrocket and teleport objects!
     if (dt > 0.05) dt = 0.016; 
     
     gameSpeed = 220 + (score * 1.5);
@@ -587,11 +590,12 @@ function gameLoop(timestamp) {
     if (char.y < 350 || char.vy !== 0) {
         char.vy += char.gravity * dt;
         char.y += char.vy * dt;
+        // The Double Jump Landing Reset!
         if (char.y >= 350) {
-            char.y = 350; char.vy = 0; char.isJumping = false;
+            char.y = 350; char.vy = 0; char.isJumping = false; char.jumps = 0; 
         }
     }
-    char.h = char.isSliding ? 25 : 50; // Shrink hitbox when sliding
+    char.h = char.isSliding ? 25 : 50; 
     
     obstacles.forEach(obs => {
         if (!obs.active) return;
@@ -607,7 +611,6 @@ function gameLoop(timestamp) {
             obs.y = 260 + Math.sin(Date.now() / 200) * 80;
         }
 
-        // PERFECT HITBOX LOGIC: Forgiving on sides, exact on top/bottom
         let hitX = char.x + char.w - 10 > obs.x && char.x + 10 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 10 < obs.y;
         
@@ -622,11 +625,10 @@ function gameLoop(timestamp) {
                     showFeedback(catchTexts[Math.floor(Math.random() * catchTexts.length)], "#2E7D32");
                     audioManager.playSFX('pickup.wav');
                     
-                    // Pick a new target word!
                     targetWord = gameWords[Math.floor(Math.random() * gameWords.length)];
                     uiTarget.innerText = targetWord.english;
                     
-                    // FIXED: POOF! All other words vanish so you don't get unfair deaths
+                    // CLEARS ALL OTHER WORDS TO PREVENT UNFAIR DEATHS!
                     obstacles.forEach(o => {
                         if(o.type === 'WORD' && o.active) o.active = false; 
                     });
@@ -658,10 +660,12 @@ function gameLoop(timestamp) {
         }
     });
     
-    obstacles = obstacles.filter(obs => obs.x > -200);
-    let minGap = Math.max(300, 700 - (score * 4));
-    if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < 800 - minGap) {
+    // THE DISTANCE TIMER (Fixes the 1-minute Gap bug!)
+    distanceSinceLastSpawn += gameSpeed * dt;
+    if (distanceSinceLastSpawn > currentMinGap) {
         spawnObstacle();
+        distanceSinceLastSpawn = 0;
+        currentMinGap = Math.max(250, 600 - (score * 4)); // Recalculate gap!
     }
     
     drawGame();
@@ -702,10 +706,12 @@ function drawGame() {
         gCtx.fillStyle = '#2E7D32'; gCtx.fillRect(t.x, 230, 30, 40);
     });
 
-    gCtx.fillStyle = '#795548'; gCtx.fillRect(0, 350, gCanvas.width, 100);
+    // FIXED: The deep dirt floor, prevents blue sky underneath!
+    gCtx.fillStyle = '#795548'; gCtx.fillRect(0, 350, gCanvas.width, 500); 
     gCtx.fillStyle = '#5D4037';
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 60) {
         gCtx.fillRect(i, 370, 20, 20); gCtx.fillRect(i + 30, 410, 20, 20);
+        gCtx.fillRect(i + 15, 450, 20, 20); // Extra deep dirt
     }
     gCtx.fillStyle = '#2E7D32'; 
     for (let i = -groundScrollX; i < gCanvas.width + 120; i += 40) {
@@ -780,7 +786,7 @@ function drawGame() {
     
     gCtx.save();
     gCtx.translate(char.x + char.w/2, char.y);
-    let sc = 3; // Scaled down for 450px Canvas
+    let sc = 3; 
     
     if (char.isSliding) {
         gCtx.fillStyle = '#5D4037'; gCtx.fillRect(-8*sc, -8*sc, 14*sc, 8*sc);
@@ -803,14 +809,16 @@ function drawGame() {
     gCtx.restore();
 }
 
+// THE DOUBLE JUMP LOGIC
 function jump() {
-    if (gameState === 'PLAYING' && char.y === 350) {
-        char.vy = char.jumpForce; char.isJumping = true;
+    if (gameState === 'PLAYING' && char.jumps < char.maxJumps) {
+        char.vy = char.jumpForce; 
+        char.isJumping = true;
+        char.jumps++;
         audioManager.playSFX('jump.wav');
     }
 }
 
-// FIXED: e.stopPropagation() prevents the iPad from delaying the buttons!
 document.getElementById('btn-jump').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); jump(); });
 
 const slideBtn = document.getElementById('btn-slide');
