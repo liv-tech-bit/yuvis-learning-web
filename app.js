@@ -12,34 +12,52 @@ let matchingBatches = [];
 let currentBatchIndex = 0;
 
 // ==========================================
-// 2. AUDIO MANAGER
+// 2. AUDIO MANAGER (THE "SOUND POOL" LAG FIX)
 // ==========================================
+const audioPool = {};
 const audioManager = {
     bgm: null,
-    activeSFX: [], 
     playBGM: function(filename, volume = 0.25) { 
-        if (this.bgm) { this.bgm.pause(); this.bgm.src = ""; this.bgm = null; }
-        this.bgm = new Audio(`audio/${filename}`);
+        if (this.bgm) { this.bgm.pause(); }
+        if (!audioPool['bgm']) {
+            audioPool['bgm'] = new Audio(`audio/${filename}`);
+            audioPool['bgm'].loop = true;
+        }
+        this.bgm = audioPool['bgm'];
         this.bgm.volume = volume; 
-        this.bgm.loop = true;
-        this.bgm.play().catch(e => console.log("BGM Safari Block"));
+        let playPromise = this.bgm.play();
+        if (playPromise !== undefined) { playPromise.catch(e => {}); }
     },
     stopBGM: function() {
-        if (this.bgm) { this.bgm.pause(); this.bgm.src = ""; this.bgm = null; }
+        if (this.bgm) { this.bgm.pause(); }
     },
     stopAll: function() {
         this.stopBGM();
-        this.activeSFX.forEach(sfx => { sfx.pause(); sfx.src = ""; });
-        this.activeSFX = [];
+        Object.values(audioPool).forEach(pool => {
+            if (Array.isArray(pool)) { pool.forEach(a => a.pause()); }
+        });
     },
+    // FIXED: The Sound Pool prevents the MacBook from stuttering and the iPad from crashing!
     playSFX: function(filename, volume = 1.0) {
-        let sfx = new Audio(`audio/${filename}`);
-        sfx.volume = volume; 
-        this.activeSFX.push(sfx);
-        sfx.addEventListener('ended', () => { this.activeSFX = this.activeSFX.filter(a => a !== sfx); });
-        sfx.play().catch(e => {});
+        if (!audioPool[filename]) audioPool[filename] = [];
+        let pool = audioPool[filename];
+        
+        let sfx = pool.find(a => a.paused || a.ended);
+        if (!sfx) {
+            if (pool.length < 4) { // Only keep 4 overlapping copies max to save RAM
+                sfx = new Audio(`audio/${filename}`);
+                pool.push(sfx);
+            } else {
+                sfx = pool[0]; // Steal the oldest playing sound
+                sfx.pause();
+                sfx.currentTime = 0;
+            }
+        }
+        sfx.volume = volume;
+        let playPromise = sfx.play();
+        if (playPromise !== undefined) { playPromise.catch(e => {}); }
     },
-    playTracingSound: function() { this.playSFX('slide.wav', 0.15); }
+    playTracingSound: function() { this.playSFX('slide.wav', 0.10); } // Very quiet so it doesn't annoy
 };
 
 document.addEventListener("visibilitychange", () => {
@@ -166,7 +184,7 @@ function shuffleArray(array) {
 }
 
 // ==========================================
-// 5. DRAWING & TRACING ENGINE
+// 5. DRAWING & TRACING ENGINE (Lock & Music Fix)
 // ==========================================
 const tCanvas = document.getElementById('tracing-canvas');
 const tCtx = tCanvas.getContext('2d');
@@ -200,28 +218,54 @@ function resizeTCanvas() {
 }
 window.addEventListener('resize', resizeTCanvas);
 
-function getCoords(e) { return { x: e.offsetX, y: e.offsetY }; }
+function getCoords(e) { 
+    const rect = tCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }; 
+}
 
 function startDraw(e) { 
-    isDrawing = true; lastPos = getCoords(e); tCtx.beginPath(); tCtx.moveTo(lastPos.x, lastPos.y); 
-    audioManager.playTracingSound(); tCanvas.setPointerCapture(e.pointerId); 
+    isDrawing = true; lastPos = getCoords(e); 
+    audioManager.playTracingSound(); 
+    tCanvas.setPointerCapture(e.pointerId); 
 }
+
+let lastDrawTime = 0;
 function drawing(e) {
     if (!isDrawing) return;
+    
+    // FPS Limiter: Stops tracing from lagging out the iPad
+    const now = performance.now();
+    if (now - lastDrawTime < 16) return; 
+    lastDrawTime = now;
+
     const pos = getCoords(e);
-    tCtx.lineWidth = currentBrushSize; tCtx.strokeStyle = currentColor; tCtx.lineTo(pos.x, pos.y); tCtx.stroke();
+    
     if (lastPos) {
         const dx = pos.x - lastPos.x; const dy = pos.y - lastPos.y;
-        totalDistance += Math.sqrt(dx * dx + dy * dy);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 3) return; // Ignores tiny finger wiggles
+        totalDistance += dist;
     }
+
+    tCtx.beginPath();
+    tCtx.moveTo(lastPos.x, lastPos.y);
+    tCtx.lineWidth = currentBrushSize; 
+    tCtx.strokeStyle = currentColor; 
+    tCtx.lineTo(pos.x, pos.y); 
+    tCtx.stroke();
+    
     lastPos = pos;
     const btn = document.getElementById('done-tracing-btn');
+    
+    // FIXED: Only plays a tiny coin sound when unlocking a step, NOT win music!
     if (totalDistance >= requiredDistance && btn.disabled) {
-        audioManager.playSFX('slide.wav', 1.0); btn.disabled = false;
+        audioManager.playSFX('coin.wav', 0.5); 
+        btn.disabled = false;
     }
 }
 function stopDraw(e) { 
-    isDrawing = false; tCtx.beginPath(); lastPos = null; tCanvas.releasePointerCapture(e.pointerId);
+    isDrawing = false; lastPos = null; 
+    tCanvas.releasePointerCapture(e.pointerId);
 }
 
 tCanvas.addEventListener('pointerdown', startDraw); 
@@ -249,8 +293,9 @@ function openTracingScreen(wordObj, emoji, step = 1) {
     eText.innerText = wordObj.hinglish; eText.style.fontSize = fontSize; eText.style.color = `rgba(0,0,0,${textAlpha})`;
     
     const totalChars = wordObj.hindi.length + wordObj.hinglish.length;
-    let difficultyMultiplier = step >= 4 ? 30 : 60; 
-    requiredDistance = Math.max(100, totalChars * difficultyMultiplier);
+    // FIXED: Tighter lock mechanism. Requires more distance before unlocking!
+    let difficultyMultiplier = step >= 4 ? 40 : 80; 
+    requiredDistance = Math.max(200, totalChars * difficultyMultiplier);
     
     document.getElementById('tracing-screen').classList.remove('hidden');
     document.getElementById('done-tracing-btn').innerText = (isMissionActive && step < 5) ? "Next Step" : "Done!";
@@ -260,15 +305,26 @@ function openTracingScreen(wordObj, emoji, step = 1) {
 }
 
 document.getElementById('close-tracing-btn').onclick = () => { document.getElementById('tracing-screen').classList.add('hidden'); isMissionActive = false; };
+
 document.getElementById('done-tracing-btn').onclick = () => {
     if (!completedWords.includes(activeWord.english)) {
         completedWords.push(activeWord.english); localStorage.setItem('completedWords', JSON.stringify(completedWords));
     }
     if (isMissionActive) {
-        if (currentStep < 5) { openTracingScreen(activeWord, funEmojis[dictionaryList.indexOf(activeWord) % funEmojis.length], currentStep + 1); } 
-        else { audioManager.playSFX('win.mp3'); tracingQueue.shift(); processNextMissionTask(); }
+        if (currentStep < 5) { 
+            // FIXED: No win music here! Just quietly transitions.
+            openTracingScreen(activeWord, funEmojis[dictionaryList.indexOf(activeWord) % funEmojis.length], currentStep + 1); 
+        } else { 
+            // FIXED: BIG WIN MUSIC ONLY HAPPENS AT STEP 5!
+            audioManager.playSFX('win.mp3'); 
+            tracingQueue.shift(); 
+            processNextMissionTask(); 
+        }
     } else {
-        audioManager.playSFX('win.mp3'); document.getElementById('tracing-screen').classList.add('hidden'); renderDictionary();
+        // FIXED: Big win music only happens when practice mode is done!
+        audioManager.playSFX('win.mp3'); 
+        document.getElementById('tracing-screen').classList.add('hidden'); 
+        renderDictionary();
     }
 };
 
@@ -423,7 +479,7 @@ document.getElementById('search-input').addEventListener('input', (e) => renderD
 renderDictionary(); renderCalendar();
 
 // ==========================================
-// 8. ENDLESS RUNNER GAME (Ultimate Logic Fixes)
+// 8. ENDLESS RUNNER GAME
 // ==========================================
 const gCanvas = document.getElementById('game-canvas');
 const gCtx = gCanvas.getContext('2d');
@@ -441,23 +497,32 @@ let gameState = 'START';
 let score = 0; let lives = 3; let lastTime = 0; 
 let gameSpeed = 220; 
 
-let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -950, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
+let char = { x: 100, y: 350, w: 45, h: 50, vy: 0, gravity: 2400, jumpForce: -900, isJumping: false, isSliding: false, jumps: 0, maxJumps: 2 };
 let obstacles = [];
 let gameWords = []; let targetWord = null; let groundScrollX = 0;
 
 let lastLane = 350; 
 let lastHazardType = ''; 
 
+let distanceSinceLastSpawn = 0;
+let currentMinGap = 400;
+
 let clouds = [ {x: 100, y: 50, w: 80, h: 30}, {x: 450, y: 80, w: 100, h: 40}, {x: 800, y: 40, w: 90, h: 35} ];
 let trees = [ {x: 150}, {x: 500}, {x: 900} ];
 let feedbackTimeout;
 
+// FIXED: Animation re-triggering uses pure JS to prevent layout recalculation lag!
 function showFeedback(text, color) {
     uiFeedback.innerText = text;
     uiFeedback.style.color = color;
+    
     uiFeedback.classList.remove('pop-anim');
-    void uiFeedback.offsetWidth; 
-    uiFeedback.classList.add('pop-anim');
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (gameState === 'PLAYING') uiFeedback.classList.add('pop-anim');
+        });
+    });
+
     clearTimeout(feedbackTimeout);
     feedbackTimeout = setTimeout(() => {
         if (gameState === 'PLAYING') uiFeedback.innerText = "";
@@ -488,6 +553,8 @@ function resetGame() {
     char.y = 350; char.vy = 0; char.isJumping = false; char.isSliding = false; char.jumps = 0;
     
     obstacles = []; 
+    distanceSinceLastSpawn = 0;
+    currentMinGap = 400;
     lastHazardType = ''; 
     spawnObstacle();
     
@@ -502,21 +569,14 @@ function resetGame() {
     gameRAF = requestAnimationFrame(gameLoop);
 }
 
-// FIXED SPAWNER: 70% Words, 30% Hazards. Starts with smaller gaps!
 function spawnObstacle() {
     let obs = { active: true, passed: false, isHoming: false, isSine: false, scale: 1.0, type: '' };
-    
-    let minGap = Math.max(250, 450 - (score * 2)); 
-    let startX = 850;
-    if (obstacles.length > 0) {
-        startX = Math.max(850, obstacles[obstacles.length - 1].x + minGap + (Math.random() * 50));
-    }
-    obs.x = startX;
+    obs.x = 850;
 
     let rand = Math.random();
-    if (rand < 0.70) {
+    if (rand < 0.50) {
         obs.type = 'WORD'; 
-        let isCorrect = Math.random() < 0.60; // 60% chance it is the correct word!
+        let isCorrect = Math.random() < 0.40; 
         obs.isCorrectWord = isCorrect;
         
         if(isCorrect) {
@@ -546,9 +606,8 @@ function spawnObstacle() {
         else s = 1.2;
         obs.scale = s;
 
-        // FIXED: Hitboxes now perfectly match the drawings!
         if (chosenHazard === 'MOUNTAIN') {
-            obs.w = 60 * s; obs.h = 60 * s; obs.y = 350;
+            obs.w = 60 * s; obs.h = 70 * s; obs.y = 350;
         } else if (chosenHazard === 'CACTUS') {
             obs.w = 40 * s; obs.h = 60 * s; obs.y = 350;
         } else if (chosenHazard === 'TREE') {
@@ -556,13 +615,13 @@ function spawnObstacle() {
         } else if (chosenHazard === 'ELEPHANT') {
             obs.w = 80 * s; obs.h = 50 * s; obs.y = 350;
         } else if (chosenHazard === 'BIRD') {
-            obs.w = 50 * s; obs.h = 25 * s; obs.y = 280; obs.isSine = true; 
+            obs.w = 50 * s; obs.h = 35 * s; obs.y = 280; obs.isSine = true; 
         } else if (chosenHazard === 'UFO') {
-            obs.w = 60 * s; obs.h = 25 * s; obs.y = 150; obs.isHoming = true; 
+            obs.w = 60 * s; obs.h = 30 * s; obs.y = 150; obs.isHoming = true; 
         } else if (chosenHazard === 'LAVA') {
-            obs.scale = 1; obs.w = 110; obs.h = 25; obs.y = 350; 
+            obs.scale = 1; obs.w = 90; obs.h = 25; obs.y = 350; 
         } else if (chosenHazard === 'PUDDLE') {
-            obs.scale = 1; obs.w = 90; obs.h = 15; obs.y = 350; 
+            obs.scale = 1; obs.w = 80; obs.h = 15; obs.y = 350; 
         }
     }
     obstacles.push(obs);
@@ -605,7 +664,6 @@ function gameLoop(timestamp) {
             obs.y = 260 + Math.sin(Date.now() / 200) * 80;
         }
 
-        // PERFECT HITBOX LOGIC!
         let hitX = char.x + char.w - 10 > obs.x && char.x + 10 < obs.x + obs.w;
         let hitY = char.y > obs.y - obs.h + 5 && char.y - char.h + 10 < obs.y;
         
@@ -650,12 +708,11 @@ function gameLoop(timestamp) {
         }
     });
     
-    obstacles = obstacles.filter(obs => obs.x > -200);
-    
-    // FIXED: PERFECT SPACING LOOP
-    let minGap = Math.max(250, 450 - (score * 2));
-    if (obstacles.length === 0 || obstacles[obstacles.length - 1].x < 800 - minGap) {
+    distanceSinceLastSpawn += gameSpeed * dt;
+    if (distanceSinceLastSpawn > currentMinGap) {
         spawnObstacle();
+        distanceSinceLastSpawn = 0;
+        currentMinGap = Math.max(250, 600 - (score * 4)); 
     }
     
     drawGame();
